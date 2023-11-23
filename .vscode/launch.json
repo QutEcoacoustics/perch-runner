@@ -19,9 +19,10 @@
             "program": "embed_audio_slim.py",
             "console": "integratedTerminal",
             "args": [
-                "--output_dir", "/output/test_01",
+                "--output_folder", "/output/test_01/",
                 // "--source_file_pattern", "/napco_survey_project_audio/PW/inference_datasets/20230413/*/*/*.wav"
-                "--source_file", "/napco_survey_project_audio/PW/inference_datasets/20230413/032/20220816_AAO_-23.54115+140.19473/20220816T172200+1000_SunsetToSunrise_-23.54115+140.19473.wav"
+                "--source_file", "/napco_survey_project_audio/PW/inference_datasets/20230413/032/20220816_AAO_-23.54115+140.19473/20220816T172200+1000_SunsetToSunrise_-23.54115+140.19473.wav",
+                "--max_segments", "3"
             ]
         }
     ]
