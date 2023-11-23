@@ -82,7 +82,7 @@ for segment_num in range(num_segments):
 for channel in range(file_embeddings.shape[1]):
     channel_embeddings = file_embeddings[:,channel,:]
     df = pd.DataFrame(channel_embeddings, columns=['offset'] + ['e' + str(i).zfill(3) for i in range(1280)])
-
     destination_filename = Path(args.output_folder) / Path(f"embeddings_{channel}.csv")
+
 
     df.to_csv(destination_filename, index=False)
