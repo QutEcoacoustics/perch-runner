@@ -21,7 +21,31 @@ from ml_collections import config_dict
 from chirp.inference.models import TaxonomyModelTF
 
 
-def embed_one_file(source: str, config: config_dict, output: str):
+def merge_defaults(config: config_dict):
+  """
+  gets the config based on user-supplied config and if they are missing then uses defaults
+  """
+
+  merged_config = config_dict.create(
+    hop_size = 5,
+    segment_length = 60,
+    max_segments = -1
+  )
+
+  if config is None:
+    config = config_dict.create()
+
+  for key in config:
+    merged_config[key] = config[key]
+
+  return merged_config
+
+
+
+
+def embed_one_file(source: str, output: str, config: config_dict = None):
+
+    config = merge_defaults(config)
 
     # check audio exists and get the duration
     audio_file = soundfile.SoundFile(source)
@@ -30,6 +54,8 @@ def embed_one_file(source: str, config: config_dict, output: str):
 
     model_path = "/models/4"
 
+    # model config contains some values from this function's config plus
+    # some values we have fixed.
     model_config = config_dict.create(
         hop_size_s = config.hop_size,
         model_path = model_path,
@@ -64,7 +90,9 @@ def embed_one_file(source: str, config: config_dict, output: str):
 
       if len(audio) > 1:
         embeddings = embedding_model.embed(audio).embeddings
-        offsets = np.arange(0,config.segment_length,config.hop_size).reshape(12,1,1)
+
+        # the last segment of the file might be smaller than the rest, so we always use its length
+        offsets = np.arange(0,embeddings.shape[0]*config.hop_size,config.hop_size).reshape(embeddings.shape[0],1,1) + offset_s
 
         # if source separation was used, embeddings will have an extra dimention for channel
         # for consistency we will add the extra dimention even if there is only 1 channel
@@ -73,7 +101,7 @@ def embed_one_file(source: str, config: config_dict, output: str):
         if len(shape) == 2:
            embeddings = embeddings.reshape(shape[0], 1, shape[1])
         
-        segment_embeddings = np.concatenate((offsets + offset_s, embeddings), axis=2)
+        segment_embeddings = np.concatenate((offsets, embeddings), axis=2)
         file_embeddings = np.concatenate((file_embeddings, segment_embeddings), axis=0)
       else:
         print('no audio found')

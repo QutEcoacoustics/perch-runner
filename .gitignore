@@ -1,1 +1,5 @@
 __pycache__
+
+tests/output/*
+
+!test/output/.gitkeep

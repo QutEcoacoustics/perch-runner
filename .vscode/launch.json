@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "Python: Current File",
             "type": "python",
@@ -46,6 +47,13 @@
                 "--destination", "/models",
                 "--version", "4"
             ]
+        },
+        {
+            "name": "run test manually",
+            "type": "python",
+            "request": "launch",
+            "program": "tests/test_embed.py",
+            "console": "integratedTerminal"
         }
     ]
 }
