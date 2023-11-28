@@ -8,7 +8,7 @@ RUN apt install -y libsndfile1 ffmpeg
 # see https://stackoverflow.com/questions/53835198/integrating-python-poetry-with-docker
 RUN curl -sSL https://install.python-poetry.org | python3 -
 
-RUN mkdir /app && mkdir /app/scripts
+RUN mkdir /app && mkdir /app/src
 WORKDIR /app
 
 # download and unzip chirp
@@ -37,4 +37,6 @@ RUN poetry install --no-interaction --no-ansi -vvv
 COPY ./src  /app/src
 
 RUN python /app/src/download_model.py --version 4 --destination /models
+
+ENV PYTHONPATH "${PYTHONPATH}:/app/perch-main"
 
