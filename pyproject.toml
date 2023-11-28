@@ -1,0 +1,41 @@
+[tool.poetry]
+name = "chirp_runner"
+version = "0.1.0"
+description = "Scripts to use chirp basic functionality"
+authors = ["Phil Eichinski <philip.eichinski@qut.edu.au>"]
+license = "Apache 2.0"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+absl-py = "^1.4.0"
+apache-beam = {version = "^2.50.0", extras = ["gcp"]}
+clu = "^0.0.9"
+flax = "^0.7.4"
+jax = "^0.4.16"
+ml-collections = "^0.1.1"
+optax = "^0.1.7"
+# Note that tensorflow and tensorflow-io versions must be synchronized.
+# See: https://github.com/tensorflow/io#tensorflow-version-compatibility
+tensorflow = "=2.13.0"
+tensorflow-io = "=0.33"
+tensorflow-datasets = {version = "^4.9.3", extras = ["dev"]}
+pandas = {version = "^2.1.1", extras=["gcp"]}
+etils = {version = "^1.5.0", extras = ["epath"]}
+ratelimiter = "^1.2.0.post0"
+SPARQLWrapper = "^2.0.0"
+scenic = {git = "https://github.com/google-research/scenic.git"}
+tensorflow-hub = "^0.14.0"
+imageio = "^2.5.0"
+matplotlib = "^3.6.1"
+notebook = "^7.0.4"
+chex = "^0.1.7"
+numba = "^0.57"
+
+[tool.poetry.group.dev.dependencies]
+librosa = "^0.10.1"
+numpy = "^1.24.0"
+pytest = "^7.4.0"
+
+[build-system]
+requires = ["poetry-core>=1.5.0"]
+build-backend = "poetry.core.masonry.api"

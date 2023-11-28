@@ -3,9 +3,9 @@
 # launches a docker container interactive with the necessary mounts for embedding
 
 port=${1:-8888}
-image=${2:-ch3}
+image=${2:-cr01}
 
-unlabelled_local="/mnt/availae/Phil/Australian Wildlife Conservancy/Richard Seaton/napco_survey_project"
+unlabelled_local="/napco_survey_project_audio"
 labelled_local=/mnt/c/Users/Administrator/Documents/phil
 output_local=/mnt/c/Users/Administrator/Documents/phil/output
 docker run  --gpus all --user root:root -ti -p $port:$port \

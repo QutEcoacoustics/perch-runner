@@ -14,7 +14,13 @@ WORKDIR /app
 # download and unzip chirp
 ARG chirp_repo=https://github.com/google-research/chirp/archive/refs/heads/main.zip
 RUN wget $chirp_repo && unzip main.zip && rm main.zip
-WORKDIR /app/perch-main
+# WORKDIR /app/perch-main
+WORKDIR /app
+
+# we use our own pyproject file modified from the chirp on
+# because we have extra dev dependencies, and also we remove some unecessary
+# deps from the basic chirp
+COPY ./pyproject.toml /app
 
 # install chirp dependencies (not in venv since we are using docker)
 ENV PATH="/root/.local/bin:$PATH"
@@ -25,4 +31,10 @@ RUN poetry config virtualenvs.create false --local
 RUN poetry config installer.max-workers 10
 RUN poetry install --no-interaction --no-ansi -vvv
 
-COPY launch_notebook.sh run_embed.sh train_linear_model.py  /app/scripts/
+# install chirp_runner dependencies
+
+
+COPY ./src  /app/src
+
+RUN python /app/src/download_model.py --version 4 --destination /models
+
