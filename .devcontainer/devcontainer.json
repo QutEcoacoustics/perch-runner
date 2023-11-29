@@ -27,8 +27,8 @@
 
 	// Uncomment to use the Docker CLI from inside the container. See https://aka.ms/vscode-remote/samples/docker-from-docker.
 	"mounts": [
-        "source=${localWorkspaceFolder}/src,target=/app/src,type=bind",
-		"source=${localWorkspaceFolder}/tests,target=/app/tests,type=bind",
+        //"source=${localWorkspaceFolder}/src,target=/app/src,type=bind",
+		    // "source=${localWorkspaceFolder}/tests,target=/app/tests,type=bind",
         "source=/napco_survey_project_audio/,target=/napco_survey_project_audio,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil/output,target=/output,type=bind"
