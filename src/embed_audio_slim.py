@@ -126,4 +126,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = config_dict.create(**vars(args))
 
-    embed_one_file(args.source_file, config, args.output_folder)
+    embed_one_file(args.source_file, args.output_folder, config)

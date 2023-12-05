@@ -10,4 +10,3 @@ def test_embed_one_file():
 
     assert os.path.exists("tests/output/embeddings_0.csv")
 
-#test_embed_one_file()

@@ -5,6 +5,8 @@
     "version": "0.2.0",
     "configurations": [
 
+
+
         {
             "name": "Python: Current File",
             "type": "python",
@@ -21,7 +23,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--output_folder", "/output/test_01/",
-                "--source_file", "/napco_survey_project_audio/PW/inference_datasets/20230413/032/20220816_AAO_-23.54115+140.19473/20220816T172200+1000_SunsetToSunrise_-23.54115+140.19473.wav",
+                "--source_file", "/mnt/pw/inference_datasets/20230413/032/20220816_AAO_-23.54115+140.19473/20220816T172200+1000_SunsetToSunrise_-23.54115+140.19473.wav",
                 "--max_segments", "3"
             ]
         },
@@ -53,6 +55,13 @@
             "type": "python",
             "request": "launch",
             "program": "tests/test_embed.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "active learning",
+            "type": "python",
+            "request": "launch",
+            "program": "src/active_learning.py",
             "console": "integratedTerminal"
         }
     ]
