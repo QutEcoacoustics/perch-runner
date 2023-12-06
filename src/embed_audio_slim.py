@@ -20,6 +20,7 @@ from ml_collections import config_dict
 
 from chirp.inference.models import TaxonomyModelTF
 
+from src import data_frames 
 
 def merge_defaults(config: config_dict):
   """
@@ -43,7 +44,7 @@ def merge_defaults(config: config_dict):
 
 
 
-def embed_one_file(source: str, output: str, config: config_dict = None):
+def embed_one_file(source: str, config: config_dict = None) -> np.array:
 
     config = merge_defaults(config)
 
@@ -63,8 +64,7 @@ def embed_one_file(source: str, output: str, config: config_dict = None):
         window_size_s = 5.0
     )
 
-    output_folder = Path(output)
-    output_folder.mkdir(exist_ok=True, parents=True)
+
 
 
     print('\n\nLoading model(s)...')
@@ -74,7 +74,7 @@ def embed_one_file(source: str, output: str, config: config_dict = None):
     # an empty array of the with zero rows to concatenate to
     # 1280 embeddings plus one column for the offset_seconds
     # TODO: I think the shape will be different when we have audio separation channels
-    file_embeddings = np.empty((0, 1, 1281))
+    file_embeddings = np.empty((0, 1, 1281), dtype=np.float32)
 
     total_segments = ceil(audio_duration / config.segment_length)
     num_segments = min(config.max_segments, total_segments) if config.max_segments > 1 else total_segments
@@ -92,7 +92,8 @@ def embed_one_file(source: str, output: str, config: config_dict = None):
         embeddings = embedding_model.embed(audio).embeddings
 
         # the last segment of the file might be smaller than the rest, so we always use its length
-        offsets = np.arange(0,embeddings.shape[0]*config.hop_size,config.hop_size).reshape(embeddings.shape[0],1,1) + offset_s
+        # dtype should bee float32 to match the embeddings
+        offsets = np.arange(0,embeddings.shape[0]*config.hop_size,config.hop_size, dtype=np.float32).reshape(embeddings.shape[0],1,1) + offset_s
 
         # if source separation was used, embeddings will have an extra dimention for channel
         # for consistency we will add the extra dimention even if there is only 1 channel
@@ -105,16 +106,31 @@ def embed_one_file(source: str, output: str, config: config_dict = None):
         file_embeddings = np.concatenate((file_embeddings, segment_embeddings), axis=0)
       else:
         print('no audio found')
+
+    return file_embeddings
+
+
+def save_embeddings(embeddings, destination, file_type=None):
+    
+    destination = Path(destination)
+    destination.parent.mkdir(exist_ok=True, parents=True)
+    embeddings_df = data_frames.embeddings_to_df(embeddings)
+
+    if file_type is None:
+       # determine from extension
+       file_type = destination.suffix[1:]
+
+
+    match file_type:
+        case "parquet":
+            embeddings_df.to_parquet(destination, index=False)
+        case "csv":
+            embeddings_df = data_frames.serialize_embeddings_df(embeddings_df)
+            embeddings_df.to_csv(destination, index=False)
+        case _:
+            raise ValueError(f'Invalid file type for saving embeddings data frame: {file_type}')
+
       
-
-    for channel in range(file_embeddings.shape[1]):
-        channel_embeddings = file_embeddings[:,channel,:]
-        df = pd.DataFrame(channel_embeddings, columns=['offset'] + ['e' + str(i).zfill(3) for i in range(1280)])
-        destination_filename = output_folder / Path(f"embeddings_{channel}.csv")
-
-
-        df.to_csv(destination_filename, index=False)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

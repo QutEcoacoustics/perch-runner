@@ -25,7 +25,7 @@ def embeddings_to_df(embeddings) -> pd.DataFrame:
 
     #rename the columns
 
-    new_columns = ['channel', 'offset'] + [f'f{i:04d}' for i in range(embeddings.shape[2] - 1)]
+    new_columns = ['channel', 'offset'] + embedding_col_names(embeddings.shape[2] - 1)
     df.columns = new_columns
 
     return df
@@ -33,7 +33,7 @@ def embeddings_to_df(embeddings) -> pd.DataFrame:
     
         
 
-def serialise_embeddings_df(df, metadata_columns = ('channel', 'offset')) -> pd.DataFrame:
+def serialize_embeddings_df(df, metadata_columns = ('channel', 'offset')) -> pd.DataFrame:
     """
     Converts a dataframe of embeddings with 1 embedding feature per column
     to a dataframe that has 1 column for all embeddings as a base64 encoded string
@@ -51,7 +51,7 @@ def serialise_embeddings_df(df, metadata_columns = ('channel', 'offset')) -> pd.
     for row in df.itertuples(index=False):
 
         features = row[len(metadata_columns):]
-        encoded_features = serialize_embeddings(features)
+        encoded_features = serialize_array(features)
         new_row = row[:len(metadata_columns)] + (encoded_features,)
 
         new_df.loc[len(new_df)] = new_row
@@ -60,27 +60,63 @@ def serialise_embeddings_df(df, metadata_columns = ('channel', 'offset')) -> pd.
     return new_df
 
 
+def deserialize_embeddings_df(df, embedding_col = 'embeddings') -> pd.DataFrame:
+    """
+    Converts a dataframe of embeddings with 1 columns for all embedding features as base64 encoded
+    array of floats to 1 column per embedding feature as float
+    """
+    
+    if not embedding_col in df.columns:
+        raise ValueError("supplied embeddings column is not in the given dataframe")
+    
+    # deserialize the 1st row to get the number of feature columns
+    embeddings_0 = deserialize_array(df["embeddings"][0])
 
-def serialize_embeddings(array) -> str:
+    metadata_columns = list(df.columns)
+    metadata_columns.remove(embedding_col)
+
+    new_columns = metadata_columns + embedding_col_names(len(embeddings_0))
+    new_df = pd.DataFrame(columns=new_columns)
+
+
+    for row in df.itertuples(index=False):
+
+        metadata = [getattr(row, key) for key in metadata_columns]
+        serialized_embeddings = getattr(row, embedding_col)
+        raw_embeddings = list(deserialize_array(serialized_embeddings))
+        new_df.loc[len(new_df)] = metadata + raw_embeddings
+
+    return new_df
+
+
+
+def serialize_array(array) -> str:
     """
     serializes a single clip's embeddings from a 1280 array or list to a string
     using base64 encoding
 
     """
 
-    byte_data = b''.join(struct.pack('f', f) for f in array)
+    #byte_data = b''.join(struct.pack('f', f) for f in array)
+    byte_data = np.array(array, dtype=np.float32).tobytes()
     base64_encoded = base64.b64encode(byte_data).decode('utf-8')
     return base64_encoded
 
 
-def deserialize_embeddings(base64_encoded) -> np.array:
+def deserialize_array(base64_encoded) -> np.array:
     """
     deserializes a string and produces an array of shape (1280,)
 
     """
 
     byte_data = base64.b64decode(base64_encoded)
-    float_data = struct.unpack('f'*int(len(byte_data)/4), byte_data)
+    #float_data = struct.unpack('f'*int(len(byte_data)/bytes_per_element), byte_data)
+    float_data = np.frombuffer(byte_data, dtype=np.float32)
     return np.array(float_data)
 
     
+def embedding_col_names(num_features: int) -> list:
+    """
+    generates column names for the embedding features columns
+    """
+    return [f'f{i:04d}' for i in range(num_features)]
