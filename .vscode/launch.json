@@ -5,6 +5,10 @@
     "version": "0.2.0",
     "configurations": [
 
+        
+
+
+
 
 
         {
@@ -13,7 +17,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": false
         },
         {
             "name": "Embed",
@@ -63,6 +67,18 @@
             "request": "launch",
             "program": "src/active_learning.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "embed to tf record",
+            "type": "python",
+            "request": "launch",
+            "program": "src/embed_audio.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--input", "/mnt/napco_survey_project_audio/CGW/richard/20230526/053/*/*wav",
+                "--output", "/phil/output/cgw/embeddings_by_site/053_test"
+            ]
         }
+    ]
     ]
 }

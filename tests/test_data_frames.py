@@ -1,6 +1,10 @@
 
 import os
+import numpy as np
+import pytest
+
 from src import data_frames
+
 
 
 def test_embeddings_to_df(random_embeddings_01) -> None:
@@ -14,7 +18,7 @@ def test_embeddings_to_df(random_embeddings_01) -> None:
 def test_serialize_embeddings(random_embeddings_01) -> None:
 
     embeddings_df = data_frames.embeddings_to_df(random_embeddings_01)
-    serialized_embeddings_df = data_frames.serialise_embeddings_df(embeddings_df)
+    serialized_embeddings_df = data_frames.serialize_embeddings_df(embeddings_df)
     num_rows, num_columns = serialized_embeddings_df.shape
     # channel, offset, features
     expected_num_columns = 3
@@ -31,5 +35,30 @@ def test_deserialize_embeddings(random_embeddings_01) -> None:
     assert (embeddings_df == deserialized_embeddings_df).all().all()
 
 
+def test_serialize_array_wrong_type_1() -> None:
 
-    
+    raw = [1.234, 2.345, 3.456]
+    # we always assume 32 bit floats
+    with pytest.raises(TypeError, match="Value must be a <class 'numpy.float32'> array, but <class 'list'> was given"):
+        data_frames.serialize_array(raw)
+
+
+def test_serialize_array_wrong_type_2() -> None:
+
+    raw = np.array([1.234, 2.345, 3.456])
+    # we always assume 32 bit floats
+    with pytest.raises(TypeError, match="Value must be a <class 'numpy.float32'> array, but <class 'numpy.ndarray'> float64 was given"):
+        data_frames.serialize_array(raw)
+
+
+def test_serialize_array() -> None:
+
+    raw = np.array([1.234, 2.345, 3.456], dtype=np.float32)
+    #raw = np.array([1.234], dtype=np.float32)
+    dtype=np.float32
+    #raw = np.array([1], dtype=dtype)
+    base64 = 'tvOdP3sUFkAbL11A'
+    serialized = data_frames.serialize_array(raw)
+    assert serialized == base64
+    deserialized = data_frames.deserialize_array(serialized, dtype)
+    assert np.array_equal(deserialized, raw)

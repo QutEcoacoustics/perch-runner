@@ -51,7 +51,7 @@ def serialize_embeddings_df(df, metadata_columns = ('channel', 'offset')) -> pd.
     for row in df.itertuples(index=False):
 
         features = row[len(metadata_columns):]
-        encoded_features = serialize_array(features)
+        encoded_features = serialize_array(np.array(features, dtype=np.float32))
         new_row = row[:len(metadata_columns)] + (encoded_features,)
 
         new_df.loc[len(new_df)] = new_row
@@ -90,20 +90,60 @@ def deserialize_embeddings_df(df, embedding_col = 'embeddings') -> pd.DataFrame:
 
 
 
-def serialize_array(array) -> str:
+def serialize_array_old(array: np.ndarray[np.float32]) -> str:
     """
     serializes a single clip's embeddings from a 1280 array or list to a string
     using base64 encoding
-
     """
 
+    if not isinstance(array, np.ndarray) or not array.dtype == np.float32:
+        # embeddings should be float32, so we don't support anything else. 
+        # so that we can decode on the otherside and be sure it matches
+        supplied_type = f'{type(array)} {array.dtype}' if isinstance(array, np.ndarray) else type(array)
+        raise TypeError(f"Value must be a float32 array, but {supplied_type} was given")
+
     #byte_data = b''.join(struct.pack('f', f) for f in array)
-    byte_data = np.array(array, dtype=np.float32).tobytes()
-    base64_encoded = base64.b64encode(byte_data).decode('utf-8')
+    # byte_data = np.array(array, dtype=np.float32).tobytes()
+    #base64_encoded = base64.b64encode(array.tobytes(order='little')).decode('ascii')
+    bytes = array.tobytes()
+    base64_encoded = base64.b64encode(bytes).decode('ascii')
     return base64_encoded
 
+def serialize_array(array: np.ndarray, dtype=np.float32) -> str:
+    """
+    serializes a single clip's embeddings from a 1280 array or list to a string
+    using base64 encoding
+    """
 
-def deserialize_array(base64_encoded) -> np.array:
+    if not isinstance(array, np.ndarray) or not array.dtype == dtype:
+        # embeddings should be float32, however another type can be specified
+        # We don't actually need to know the dtype to encode, but we need to know it to decode
+        # therefore we require it to be explicitly specified or that the array matches the default
+        # to prevent mistakes
+        supplied_type = f'{type(array)} {array.dtype}' if isinstance(array, np.ndarray) else type(array)
+        raise TypeError(f"Value must be a {dtype} array, but {supplied_type} was given")
+
+    #byte_data = b''.join(struct.pack('f', f) for f in array)
+    # byte_data = np.array(array, dtype=np.float32).tobytes()
+    #base64_encoded = base64.b64encode(array.tobytes(order='little')).decode('ascii')
+    bytes = array.tobytes()
+    base64_encoded = base64.b64encode(bytes).decode('ascii')
+    return base64_encoded
+
+def deserialize_array(base64_encoded, dtype=np.float32) -> str:
+    """
+    serializes a single clip's embeddings from a 1280 array or list to a string
+    using base64 encoding
+    """
+
+    byte_data = base64.b64decode(base64_encoded)
+    #float_data = struct.unpack('f'*int(len(byte_data)/bytes_per_element), byte_data)
+    float_data = np.frombuffer(byte_data, dtype=dtype, count=-1, offset=0)
+    return float_data
+
+
+
+def deserialize_array_old(base64_encoded) -> np.array:
     """
     deserializes a string and produces an array of shape (1280,)
 
@@ -111,8 +151,9 @@ def deserialize_array(base64_encoded) -> np.array:
 
     byte_data = base64.b64decode(base64_encoded)
     #float_data = struct.unpack('f'*int(len(byte_data)/bytes_per_element), byte_data)
-    float_data = np.frombuffer(byte_data, dtype=np.float32)
-    return np.array(float_data)
+    float_data = np.frombuffer(byte_data, dtype=np.float32, count=-1, offset=0)
+    return float_data
+    #return np.array(float_data)
 
     
 def embedding_col_names(num_features: int) -> list:

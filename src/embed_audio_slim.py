@@ -42,6 +42,20 @@ def merge_defaults(config: config_dict):
   return merged_config
 
 
+def embed_files(source_folder, output_folder, config: config_dict = None) -> None:
+   """
+   for each file in source_files, embeds and then saves to output_folder with a name that matches the original 
+   """
+
+   source_folder = Path(source_folder)
+   source_files = [file.relative_to(source_folder) for file in source_folder.rglob('*wav') if file.is_file()]
+  
+   for source_file in source_files:
+     print(f'analysing {source_file}')
+     embeddings = embed_one_file(Path(source_folder / source_file), config)
+     dest = Path(output_folder / source_file).with_suffix('.parquet')
+     save_embeddings(embeddings, dest, source_file)
+
 
 
 def embed_one_file(source: str, config: config_dict = None) -> np.array:
@@ -63,9 +77,6 @@ def embed_one_file(source: str, config: config_dict = None) -> np.array:
         sample_rate = 32000,
         window_size_s = 5.0
     )
-
-
-
 
     print('\n\nLoading model(s)...')
     #embedding_model = TaxonomyModelTF.from_config(config.embed_fn_config["model_config"])
@@ -110,7 +121,14 @@ def embed_one_file(source: str, config: config_dict = None) -> np.array:
     return file_embeddings
 
 
-def save_embeddings(embeddings, destination, file_type=None):
+def save_embeddings(embeddings: np.array, destination: str, source: str=None, file_type=None):
+    """
+    saves the embeddings to the destination in a format
+    @param embeddings: a numpy array of embeddings, of shape (num_segments, num_channels, 1281). The first column is the offset in seconds
+    @param destination: the path to save the embeddings file to
+    @param source: what to add in the source column. This is probably a workbench recording url or a path to the original file
+    @param file_type: the type of file to save to. If None, will be determined from the extension of the destination
+    """
     
     destination = Path(destination)
     destination.parent.mkdir(exist_ok=True, parents=True)
@@ -120,6 +138,8 @@ def save_embeddings(embeddings, destination, file_type=None):
        # determine from extension
        file_type = destination.suffix[1:]
 
+
+    embeddings_df.insert(0, 'source', str(source))
 
     match file_type:
         case "parquet":

@@ -29,7 +29,7 @@
 	"mounts": [
         //"source=${localWorkspaceFolder}/src,target=/app/src,type=bind",
 		    // "source=${localWorkspaceFolder}/tests,target=/app/tests,type=bind",
-        "source=/napco_survey_project_audio/pw,target=/mnt/pw,type=bind",
+        "source=/mnt/napco_survey_project_audio,target=/mnt/napco_survey_project_audio,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil/output,target=/output,type=bind"
 	],
