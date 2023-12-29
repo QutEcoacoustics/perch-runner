@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "chirp_runner"
+name = "perch_runner"
 version = "0.1.0"
-description = "Scripts to use chirp basic functionality"
+description = "Scripts to use perch basic functionality"
 authors = ["Phil Eichinski <philip.eichinski@qut.edu.au>"]
 license = "Apache 2.0"
 

@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 python:3.10-bookworm as chirp_runner
+FROM --platform=linux/amd64 python:3.10-bookworm as perch_runner
 
 RUN apt update 
 RUN apt install -y libsndfile1 ffmpeg
@@ -11,18 +11,18 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 RUN mkdir /app && mkdir /app/src
 WORKDIR /app
 
-# download and unzip chirp
-ARG chirp_repo=https://github.com/google-research/chirp/archive/refs/heads/main.zip
-RUN wget $chirp_repo && unzip main.zip && rm main.zip
+# download and unzip Perch
+ARG perch_repo=https://github.com/google-research/chirp/archive/refs/heads/main.zip
+RUN wget $perch_repo && unzip main.zip && rm main.zip
 # WORKDIR /app/perch-main
 WORKDIR /app
 
-# we use our own pyproject file modified from the chirp on
+# we use our own pyproject file modified from the perch on
 # because we have extra dev dependencies, and also we remove some unecessary
-# deps from the basic chirp
+# deps from the basic perch
 COPY ./pyproject.toml /app
 
-# install chirp dependencies (not in venv since we are using docker)
+# install perch dependencies (not in venv since we are using docker)
 ENV PATH="/root/.local/bin:$PATH"
 RUN poetry config virtualenvs.create false --local
 # RUN /root/.local/bin/poetry install
@@ -31,7 +31,7 @@ RUN poetry config virtualenvs.create false --local
 RUN poetry config installer.max-workers 10
 RUN poetry install --no-interaction --no-ansi -vvv
 
-# install chirp_runner dependencies
+# install perch_runner dependencies
 
 
 COPY ./src  /app/src

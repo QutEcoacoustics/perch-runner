@@ -1,12 +1,12 @@
-# chirp-runner
+# perch-runner
 
-A docker container that runs chirp.
+A docker container that runs Perch.
 
 ## Commands
 
 This container has three basic functions:
 
-1. Generate chirp embeddings for a given audio file
+1. Generate Perch embeddings for a given audio file
 2. To classify the embeddings given an audio file and one or more additional linear classifiers
 3. To measure distance between a given sample and a given audio file
 
@@ -53,7 +53,7 @@ hop_length_seconds: 5.0
 ```bash
 cd /data
 curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
-docker run -v /data:/data chirp-runner generate /data/audio.wav /data/output
+docker run -v /data:/data perch-runner generate /data/audio.wav /data/output
 ```
 
 ### Classify
@@ -96,7 +96,7 @@ classifiers:
 ```bash 
 cd /data
 curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
-docker run -v /data:/data chirp-runner classify -c /data/config.yml /data/audio.wav /data/output
+docker run -v /data:/data perch-runner classify -c /data/config.yml /data/audio.wav /data/output
 ```
 
 ### Distance
@@ -130,5 +130,5 @@ hop_length_seconds: 5.0
 cd /data
 curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
 curl -o query.wav https://api.ecosounds.org/audio_recordings/456/media.wav?start=10&end=15
-docker run -v /data:/data chirp-runner distance -c /data/config.yml /data/audio.wav /data/query.wav /data/output
+docker run -v /data:/data perch-runner distance -c /data/config.yml /data/audio.wav /data/query.wav /data/output
 ```
