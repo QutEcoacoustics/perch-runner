@@ -57,6 +57,17 @@ def embed_files(source_folder, output_folder, config: config_dict = None) -> Non
      save_embeddings(embeddings, dest, source_file)
 
 
+def embed_file_and_save(source: str, destination: str, config: config_dict = None) -> None:
+    """
+    embeds a single file and saves to destination
+    """
+
+    source = Path(source)
+    destination = Path(destination)
+
+    embeddings = embed_one_file(source, config)
+    save_embeddings(embeddings, destination, source)
+
 
 def embed_one_file(source: str, config: config_dict = None) -> np.array:
 
@@ -88,7 +99,7 @@ def embed_one_file(source: str, config: config_dict = None) -> np.array:
     file_embeddings = np.empty((0, 1, 1281), dtype=np.float32)
 
     total_segments = ceil(audio_duration / config.segment_length)
-    num_segments = min(config.max_segments, total_segments) if config.max_segments > 1 else total_segments
+    num_segments = min(config.max_segments, total_segments) if config.max_segments >= 1 else total_segments
 
     for segment_num in range(num_segments):
       offset_s = config.segment_length * segment_num
@@ -131,6 +142,7 @@ def save_embeddings(embeddings: np.array, destination: str, source: str=None, fi
     """
     
     destination = Path(destination)
+    print(f'creating output folder: {destination.parent}')
     destination.parent.mkdir(exist_ok=True, parents=True)
     embeddings_df = data_frames.embeddings_to_df(embeddings)
 
@@ -138,11 +150,12 @@ def save_embeddings(embeddings: np.array, destination: str, source: str=None, fi
        # determine from extension
        file_type = destination.suffix[1:]
 
-
+    
     embeddings_df.insert(0, 'source', str(source))
 
     match file_type:
         case "parquet":
+            print(f'saving as parquet to {destination}')
             embeddings_df.to_parquet(destination, index=False)
         case "csv":
             embeddings_df = data_frames.serialize_embeddings_df(embeddings_df)

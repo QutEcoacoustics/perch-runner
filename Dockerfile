@@ -33,8 +33,7 @@ RUN poetry install --no-interaction --no-ansi -vvv
 
 # install perch_runner dependencies
 
-
-COPY ./src  /app/src
+COPY ./src /app/src
 
 RUN python /app/src/download_model.py --version 4 --destination /models
 

@@ -86,7 +86,7 @@ config.shard_len_s = 60  #@param
 config.num_shards_per_file = 2  #@param
 
 # Number of parent directories to include in the filename.
-config.embed_fn_config.file_id_depth = 1
+config.embed_fn_config.file_id_depth = 2
 
 # Number of TF Record files to create.
 config.tf_record_shards = 10  #@param

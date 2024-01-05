@@ -78,6 +78,18 @@
                 "--input", "/mnt/napco_survey_project_audio/CGW/richard/20230526/053/*/*wav",
                 "--output", "/phil/output/cgw/embeddings_by_site/053_test"
             ]
+        },
+        {
+            "name": "generate",
+            "type": "python",
+            "request": "launch",
+            "program": "src/app.py",
+            "console": "integratedTerminal",
+            "args": [
+                "generate",
+                "--source_file", "tests/files/200sec.wav",
+                "--output_file", "tests/output/my_subfolder/my_subsub_folder/200sec.wav.parquet"
+            ]
         }
     ]
     ]
