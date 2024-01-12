@@ -30,7 +30,27 @@ def embeddings_to_df(embeddings) -> pd.DataFrame:
 
     return df
 
-    
+
+def df_to_embeddings(df: pd.DataFrame) -> np.array:
+
+    """
+    @param df pd.DataFrame; DataFrame with (n_segments * n_channels) rows and n_features + 2 columns (including offset and channel)
+    @returns np.array; array of shape (n_segment, n_channels, n_features + 1) 
+    """
+
+    # Determine the number of channels and features
+    n_channels = df['channel'].nunique()
+    n_features = len(df.columns) - 2  # Subtracting the offset and channel columns
+
+    # Sort the DataFrame based on 'offset' and 'channel' to ensure correct ordering
+    df_sorted = df.sort_values(by=['offset', 'channel'])
+
+    # Drop the 'channel' column and pivot the DataFrame to get the correct shape
+    df_pivot = df_sorted.drop('channel', axis=1)
+    reshaped_array = df_pivot.values.reshape(-1, n_channels, n_features + 1)
+
+    return reshaped_array
+
         
 
 def serialize_embeddings_df(df, metadata_columns = ('channel', 'offset')) -> pd.DataFrame:

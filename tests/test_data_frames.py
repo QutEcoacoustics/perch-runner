@@ -15,6 +15,19 @@ def test_embeddings_to_df(random_embeddings_01) -> None:
     assert result.iloc[0,2] == random_embeddings_01[0,0,1]
 
 
+
+def test_embeddings_conversion_consistency(random_embeddings_01):
+    # Convert embeddings to DataFrame
+    df = data_frames.embeddings_to_df(random_embeddings_01)
+
+    # Convert the DataFrame back to embeddings
+    converted_embeddings = data_frames.df_to_embeddings(df)
+
+    # Check if the converted embeddings match the original ones
+    np.testing.assert_array_almost_equal(random_embeddings_01, converted_embeddings)
+
+
+
 def test_serialize_embeddings(random_embeddings_01) -> None:
 
     embeddings_df = data_frames.embeddings_to_df(random_embeddings_01)

@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -14,3 +15,21 @@ def random_embeddings_01() -> np.array:
 
    
 
+# Fixture for generating a random DataFrame
+@pytest.fixture
+def random_dataframe():
+    # Generate a random DataFrame based on your specifications
+    # For this test, you need to ensure that this DataFrame
+    # is in the correct format and can be converted back into an embeddings array.
+    # Example:
+    n_segments = 100  # for example
+    n_channels = 2   # for example
+    n_features = 1281  # for example
+
+    # Generating random data
+    data = np.random.rand(n_segments * n_channels, n_features + 2)
+    df = pd.DataFrame(data)
+    df['channel'] = np.repeat(range(n_channels), n_segments)
+    df.columns = ['offset'] + ['channel'] + [f'f{i:04d}' for i in range(n_features)]
+
+    return df

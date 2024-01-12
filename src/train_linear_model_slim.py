@@ -24,6 +24,7 @@ from chirp.projects.bootstrap import search
 from chirp.projects.multicluster import classify
 from chirp.projects.multicluster import data_lib
 
+from chirp.inference.models import TaxonomyModelTF
 
 def train(source, config, output):
    """
@@ -34,7 +35,7 @@ def train(source, config, output):
    @param output. A folder path where to save the trained model and accuracy
    """
    
-   model = supervised_learning()
+   linear_model = supervised_learning()
 
 
 # embeddings of unlabelled audio. 
@@ -65,11 +66,31 @@ def train(source, config, output):
 # project_state = bootstrap.BootstrapState(config)
 # embedding_model = project_state.embedding_model
 
+def get_model(model_path):
+   """
+   gets an object of class 'chirp.inference.models.TaxonomyModelTF'
+   which is what the from_folder_of_folders requires.
+   A bit of a hack, because to do this we require a config object   
+   """
+   model_config = config_dict.ConfigDict({
+        'hop_size_s': 5.0,
+        'model_path': model_path,
+        'sample_rate': 32000,
+        'window_size_s': 5.0,
+   })
 
-def supervised_learning():
+   taxonomy_model_tf = TaxonomyModelTF.from_config(model_config)
+
+   return taxonomy_model_tf
+
+
+
+def supervised_learning(labeled_data_path, embedding_model_version, train_params):
     """
     This is based on everything under the Supervised Learning heading in the notebook
     """
+    embedding_model_path = f"/models/{embedding_model_version}"
+    embedding_model = get_model(embedding_model_path)
 
     # Time-pooling strategy for examples longer than the model's window size.
     time_pooling = 'mean'  #@param
@@ -91,32 +112,19 @@ def supervised_learning():
     print('mean ex / class :', lbl_counts.sum() / (lbl_counts > 0).sum())
     print('min ex / class :', (lbl_counts + (lbl_counts == 0) * 1e6).min())
 
-
-    # Number of random training examples to choose form each class.
-    config.train_ratio = 0.75
-    #train_examples_per_class = None  #@param
-
-    # Number of random re-trainings. Allows judging model stability.
-    num_seeds = 1  #@param
-
-    # Classifier training hyperparams.
-    # These should be good defaults.
-    batch_size = 4
-    #num_epochs = 128
-    num_epochs = 8
-    num_hiddens = -1
-    learning_rate = 1e-3
     
     # creates a dictionary of lists where we can append to list by dictionary key
     # and if the key is not present yet it will be created with an empty list
     metrics2 = collections.defaultdict(list)
-    for seed in range(num_seeds):
-        if num_hiddens > 0:
-            model = classify.get_two_layer_model(num_hiddens, merged.embedding_dim, merged.num_classes, True)
+    for seed in range(train_params["num_seeds"]):
+        if train_params["num_hiddens"] > 0:
+            model = classify.get_two_layer_model(train_params["num_hiddens"], merged.embedding_dim, merged.num_classes, True)
         else:
             model = classify.get_linear_model(merged.embedding_dim, merged.num_classes)
 
-        run_metrics = classify.train_embedding_model(model, merged, train_ratio, train_examples_per_class, num_epochs, seed, batch_size, learning_rate)
+        run_metrics = classify.train_embedding_model(model, merged, train_params["train_ratio"], 
+                                                     train_params["train_examples_per_class"], train_params["num_epochs"], seed, 
+                                                     train_params["batch_size"], train_params["learning_rate"])
         metrics2['acc'].append(run_metrics.top1_accuracy)
         metrics2['auc_roc'].append(run_metrics.auc_roc)
         metrics2['cmap'].append(run_metrics.cmap_value)
@@ -140,23 +148,32 @@ def supervised_learning():
 
     return model
 
+# Classifier training hyperparams.
+# These should be good defaults.
+default_train_params = {
+    "batch_size" : 4,
+    "num_epochs" : 64,
+    "num_hiddens" : -1,
+    "learning_rate" : 1e-3,
+    "num_seeds" : 1,
+    "train_ratio" : 0.75,
+    "train_examples_per_class" : None
+}
 
 
-model = supervised_learning()
-save_path = "/output/trained_model.keras"
-# https://www.tensorflow.org/guide/keras/serialization_and_saving
-model.save(save_path)
-print(model)
+def train_and_save(labeled_data_path, output_file, embedding_model_version):
+    model = supervised_learning(labeled_data_path=labeled_data_path, embedding_model_version=embedding_model_version, train_params=default_train_params)
+    # https://www.tensorflow.org/guide/keras/serialization_and_saving
+    model.save(output_file)
+    print(model)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source_file", help="path to the file to analyze")
-    parser.add_argument("--output_folder", help="file to embeddings to")
-    parser.add_argument("--max_segments", default=-1, type=int, help="only analyse this many segments of the file. Useful for debugging quickly. If ommitted will analyse all")
-    parser.add_argument("--segment_length", default=60, type=int,  help="the file is split into segments of this duration in sections to save loading entire files into ram")
-    parser.add_argument("--hop_size", default=5, type=float,  help="create an 5 second embedding every this many seconds. Leave as default 5s for no overlap and no gaps.")
+    parser.add_argument("--source", help="path to folder of folders")
+    parser.add_argument("--output_file", default='/output/trained_model.keras', help="where to save the model")
+    parser.add_argument("--embedding_model_version", default=4, help="path to embedding model")
     args = parser.parse_args()
-    config = config_dict.create(**vars(args))
+    #config = config_dict.create(**vars(args))
 
-    embed_one_file(args.source_file, config, args.output_folder)
+    train_and_save(args.source, args.output_file, int(args.embedding_model_version))

@@ -4,11 +4,9 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         
 
-
-
+    
 
 
         {
@@ -32,15 +30,21 @@
             ]
         },
         {
+            "name": "Inference (parquet)",
+            "type": "python",
+            "request": "launch",
+            "program": "src/inference_parquet.py",
+            "console": "integratedTerminal",
+            "args": []
+        },
+        {
             "name": "Train",
             "type": "python",
             "request": "launch",
             "program": "src/train_linear_model_slim.py",
             "console": "integratedTerminal",
             "args": [
-                "--output_folder", "/output/test_01/",
-                "--source", "/phil/plains_wanderer_labelled/tiny_sample/",
-                "--max_segments", "3"
+                "--source", "/phil/plains_wanderer_labelled/tiny_sample/"
             ]
         },
         {
@@ -62,10 +66,10 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "active learning",
+            "name": "active learning (parquet)",
             "type": "python",
             "request": "launch",
-            "program": "src/active_learning.py",
+            "program": "src/active_learning_from_parquet.py",
             "console": "integratedTerminal"
         },
         {
