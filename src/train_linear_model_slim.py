@@ -26,17 +26,6 @@ from chirp.projects.multicluster import data_lib
 
 from chirp.inference.models import TaxonomyModelTF
 
-def train(source, config, output):
-   """
-   Trains a linear model using chirp embeddings
-
-   @param source. A folder of folders of audio clips. The folders determine the labels
-   @param config. any configuration
-   @param output. A folder path where to save the trained model and accuracy
-   """
-   
-   linear_model = supervised_learning()
-
 
 # embeddings of unlabelled audio. 
 # why is this needed?? basically just because there is a combined config object
@@ -146,7 +135,7 @@ def supervised_learning(labeled_data_path, embedding_model_version, train_params
       print(f'\n{lbl:8s}, auc_roc:{auc:5.2f}')
       colab_utils.prstats(f'test_logits({lbl})', test_logits[merged.labels.index(lbl)])
 
-    return model
+    return model, merged.labels
 
 # Classifier training hyperparams.
 # These should be good defaults.
@@ -162,10 +151,13 @@ default_train_params = {
 
 
 def train_and_save(labeled_data_path, output_file, embedding_model_version):
-    model = supervised_learning(labeled_data_path=labeled_data_path, embedding_model_version=embedding_model_version, train_params=default_train_params)
+    model, labels = supervised_learning(labeled_data_path=labeled_data_path, embedding_model_version=embedding_model_version, train_params=default_train_params)
     # https://www.tensorflow.org/guide/keras/serialization_and_saving
     model.save(output_file)
+    with open(output_file + '.labels.json', 'w') as f:
+        json.dump(labels, f)
     print(model)
+    return model, labels
 
 
 if __name__ == "__main__":

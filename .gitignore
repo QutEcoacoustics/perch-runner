@@ -5,3 +5,6 @@ tests/output/*
 !test/output/.gitkeep
 
 scripts/*
+
+*.ipynb_checkpoints/
+*.ipynb_checkpoints/*

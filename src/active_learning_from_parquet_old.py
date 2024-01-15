@@ -7,6 +7,10 @@ from etils import epath
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import tqdm
+
+from pathlib import Path
+import pandas as pd
+
 #
 from chirp.inference import colab_utils
 colab_utils.initialize(use_tf_gpu=True, disable_warnings=True)
@@ -19,11 +23,48 @@ from chirp.projects.bootstrap import display
 from chirp.projects.multicluster import classify
 from chirp.projects.multicluster import data_lib
 
+
+
+def read_parquet_files(folder_path):
+    # Create a Path object for the folder
+    folder = Path(folder_path)
+    
+    # List to hold dataframes
+    dfs = []
+    
+    # Loop through all parquet files in the folder
+    for file_path in folder.rglob('*.parquet'):
+        df = pd.read_parquet(file_path)
+        dfs.append(df)
+
+    # Concatenate all dataframes
+    combined_df = pd.concat(dfs, ignore_index=True)
+    return combined_df
+
+def create_tf_dataset(dataframe):
+    
+    feature_columns = [f'f{i:04d}' for i in range(1280)]
+    metadata_columns = ['source', 'offset', 'channel']
+    features_df = dataframe[feature_columns].values
+    metadata = dataframe[metadata_columns]
+
+    features_tensor = tf.convert_to_tensor(features_df, dtype=tf.float32)
+    dataset = tf.data.Dataset.from_tensor_slices(({"features": features_tensor, 
+                                                   "metadata": metadata.to_dict('list')}))
+    return dataset
+
+
 #@title Configure data and model locations. { vertical-output: true }
 
-# Path containing TFRecords of unlabeled embeddings.
-# We will load the model which was used to compute the embeddings automatically.
+
 embeddings_path = '/phil/output/pw_embeddings_all/'  #@param
+
+# path to folder of parquet files
+embeddings_path_2 = '/phil/output/cgw/file_embeddings/cgw_embeddings/20230526/'
+
+combined_embeddings_df = read_parquet_files(embeddings_path_2)
+embeddings_dataset = create_tf_dataset(combined_embeddings_df)
+
 
 # Path to the labeled wav data.
 # Should be in 'folder-of-folders' format - a folder with sub-folders for
@@ -31,6 +72,7 @@ embeddings_path = '/phil/output/pw_embeddings_all/'  #@param
 # Audio in sub-folders should be wav files.
 # Audio should ideally be 5s audio clips, but the system is quite forgiving.
 labeled_data_path = '/phil/cgw_labelled/all_merged/'  #@param
+labeled_data_path = '/phil/cgw_labelled/tiny_subset/'  #@param
 
 #@title Load the model. { vertical-output: true }
 
@@ -39,20 +81,41 @@ embeddings_path = epath.Path(embeddings_path)
 with (embeddings_path / 'config.json').open() as f:
   embedding_config = config_dict.ConfigDict(json.loads(f.read()))
 embeddings_glob = embeddings_path / 'embeddings-*'
-
+# this is just a dataclass which is basically the embedding config but reshaped a bit, and the annotated path added
 config = bootstrap.BootstrapConfig.load_from_embedding_config(
     embeddings_path=embeddings_path,
     annotated_path=labeled_data_path)
 embedding_hop_size_s = config.embedding_hop_size_s
+
+
+# this is a dataclass with
+# - the config
+# - the model
+# - the embeddings dataset of unlabelled audio. 
+# - the 'source infos' which has an entry per 'shard' i.e. per 60s of audio. 
+
 project_state = bootstrap.BootstrapState(config)
 embedding_model = project_state.embedding_model
 
+
+dataset = project_state.embeddings_dataset
+# the dataset items have the structure as follows (we might need to emulate this)
+# 'embedding', numpy.ndarray of shape (12,1,1280) (note: not a tensor)
+# 'embedding_shape', array with values [12,1,1280]
+# 'filename', byte string e.g. b'032/20220917_AAO_-23.54115+140.19473/20220917T183300+1000_SunsetToSunrise_-23.54115+140.19473.wav'
+# 'raw_audio', numpy array float32. in this case it's empty.
+# 'raw_audio_shape', numpy array float32. in this case it's empty.
+# 'separated_audio', numpy array float32. in this case it's empty. 
+# 'separated_audio_shape', tensor shape (0,) (when I try to inspec this the debug server disconnects)
+# 'timestamp_s' tensor of shape (). All seems to have value 0.0, but this might be cause of a mistake I made during embedding to only do the 1st min?
+# items = list(dataset.take(1).as_numpy_iterator())
 
 # @title Load+Embed the Labeled Dataset. { vertical-output: true }
 
 # Time-pooling strategy for examples longer than the model's window size.
 time_pooling = 'mean'  # @param
 
+# this is the LABELLED dataset
 merged = data_lib.MergedDataset.from_folder_of_folders(
     base_dir=labeled_data_path,
     embedding_model=embedding_model,
