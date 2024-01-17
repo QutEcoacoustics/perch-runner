@@ -1,12 +1,11 @@
-# in this file, we attempt to run inference with as few deps as possible
-# we we will drill into the classes and functions invoked by the active_learning notebook.
-# it may therefore have more code, as more code will need to be copy-pasted
-
+# run inference file by file on parquet embeddings files
+# each input parquet file will result in a csv file with the same name
 
 import argparse
 import json
 from pathlib import Path
 from functools import partial
+import random
 
 import keras
 from ml_collections import config_dict
@@ -23,31 +22,63 @@ from chirp.inference import tf_examples
 from data_frames import df_to_embeddings
 
 
-def process_embeddings(embeddings_path, classifier_model, output_path, labels=('neg', 'pos')):
-    if isinstance(classifier_model, str):
-       embeddings_classifier = keras.models.load_model(classifier_model)
-    else:
-       embeddings_classifier = classifier_model
-    combined_embeddings_df = read_parquet_files(embeddings_path)
-    embeddings_ds = create_tf_dataset(combined_embeddings_df)
-    #debug_classifier(embeddings_ds, embeddings_classifier)
-    # lazy map doesn't get executed until we iterate over the dataset
-    classify_function = partial(classify_batch, embeddings_classifier=embeddings_classifier)
-    embeddings_ds = embeddings_ds.map(classify_function)
-    # these must match the order of the classes in the classifier model
-    # TODO: save these with and retrieve from the model
+def load_model(model_path):
+    model = keras.models.load_model(model_path)
+    with open(model_path + '.labels.json') as f:
+        labels = tuple(json.load(f))
+    return model, labels
 
-    results = classify_items(embeddings_ds, labels)
-    # just get the scores, fname and offset. no distances (not sure what this even is) or embeddings
-    results_df = pd.DataFrame(results, columns=['filename', 'offset_seconds'] + list(labels))
-    results_df.to_csv(output_path, index=False)
-    return results_df
+
+
+def process_embeddings(embeddings_path, classifier_model, output_path, skip_if_file_exists=False):
+    """
+    @param classifier_model: either a tuple of (model, labels) or a path to a saved model (where saved model labels path is model_path + '.labels.json' by convention)
+    """
+    if isinstance(classifier_model, str):
+       embeddings_classifier, labels = load_model(classifier_model)
+    else:
+       embeddings_classifier, labels = classifier_model
+
+    # list of paths to the embeddings files relative to the embeddings_path
+    embeddings_files_relative = [path.relative_to(embeddings_path) for path in Path(embeddings_path).rglob('*.parquet')]
+
+    # poor-person's parallel: shuffle and start script in a different process with skip_if_file_exists=True
+    random.shuffle(embeddings_files_relative)
+
+    print(f'processing {len(embeddings_files_relative)} embeddings files')
+
+    for index, embedding_file in enumerate(tqdm.tqdm(embeddings_files_relative, desc="Processing")):
+
+        file_output_path = output_path / embedding_file.with_suffix('.csv')
+        if skip_if_file_exists and file_output_path.exists():
+            #print(f'skipping {embedding_file} as {file_output_path} already exists')
+            continue
+        #print(f'processing {index} of {len(embeddings_files_relative)}: {embedding_file}')
+        df = pd.read_parquet(embeddings_path / embedding_file)
+        embeddings_ds = create_tf_dataset(df)
+        #debug_classifier(embeddings_ds, embeddings_classifier)
+        # lazy map doesn't get executed until we iterate over the dataset
+        classify_function = partial(classify_batch, embeddings_classifier=embeddings_classifier)
+        embeddings_ds = embeddings_ds.map(classify_function)
+        # these must match the order of the classes in the classifier model
+        # TODO: save these with and retrieve from the model
+
+        results = classify_items(embeddings_ds, labels)
+        # just get the scores, fname and offset. no distances (not sure what this even is) or embeddings
+        results_df = pd.DataFrame(results, columns=['filename', 'offset_seconds'] + list(labels))
+
+        file_output_path.parent.mkdir(parents=True, exist_ok=True)
+        results_df.to_csv(file_output_path, index=False)
+
+    print(f'finished processing {len(embeddings_files_relative)} embeddings files')
+    
 
 
 def debug_classifier(ds, model):
     """
     just a little function to test the classifier on a single batch
-    without adding the extra map function to the dataset
+    explicitly instead of by adding a map function to the dataset, so it's easier to 
+    debug 
     """
 
     model_2cl = keras.models.load_model('/phil/output/trained_model.keras')
@@ -151,7 +182,8 @@ def create_tf_dataset(dataframe, rows_per_item=12):
 
 def classify_batch(batch, embeddings_classifier):
     """
-    2nd map function
+    based on the original classify_batch function in perch search
+    except we don't have a target_index, we just return scores for all classes
     """
     emb = batch[tf_examples.EMBEDDING]
     emb_shape = tf.shape(emb)
@@ -172,14 +204,19 @@ def classify_batch(batch, embeddings_classifier):
     return batch
 
  
-def classify_items(embeddings_ds, label_names):
+def classify_items(embeddings_ds, label_names, use_progress_bar = False):
 
     #all_distances = []
     all_results = []
 
     try:
+
+        # we are already using a progress bar for the loop over files, so probably don't use one here, 
+        # but it's an option if we want it
+        wrapped_iterable = tqdm.tqdm(embeddings_ds.as_numpy_iterator()) if use_progress_bar else embeddings_ds.as_numpy_iterator()
+
         # iterate over the examples, which are the embedding files
-        for ex in tqdm.tqdm(embeddings_ds.as_numpy_iterator()):
+        for ex in wrapped_iterable:
             #distances = ex['scores'].reshape([-1])
             #all_distances.extend(distances)
 
@@ -197,7 +234,7 @@ def classify_items(embeddings_ds, label_names):
                 for i, label in enumerate(label_names):
                     result[label] = ex['scores'][t, i]
                   
-                print(f'{result["filename"]} {result["offset_seconds"]}')
+                #print(f'{result["filename"]} {result["offset_seconds"]}')
    
                 all_results.append(result)
             
@@ -214,7 +251,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--embeddings_dir", help="path to directory of embeddings files")
     parser.add_argument("--model_path", help="path to the saved classifier model")
-    parser.add_argument("--output", help="save the results here")
-    parser.add_argument("--max_segments", default=-1, type=int, help="only analyse this many segments of the file. Useful for debugging quickly. If ommitted will analyse all")
+    parser.add_argument("--output_dir", help="save the results here")
+    parser.add_argument("--skip_if_file_exists", action='store_true', help="skip processing if the output file already exists")
     args = parser.parse_args()
-    process_embeddings(args.embeddings_dir, args.model_path, args.output)
+    process_embeddings(args.embeddings_dir, args.model_path, args.output_dir, args.skip_if_file_exists)

@@ -5,6 +5,10 @@
     "version": "0.2.0",
     "configurations": [
 
+
+
+
+
         
 
 
@@ -42,9 +46,10 @@
             "program": "src/inference_parquet.py",
             "console": "integratedTerminal",
             "args": [
-                "--embeddings_dir", "/phil/output/cgw/file_embeddings/cgw_embeddings/20230526/",
+                "--embeddings_dir", "/phil/output/embeddings/cgw/file_embeddings_1/cgw_embeddings/20230526/044/",
                 "--model_path", "/output/trained_model.keras",
-                "--output", "tests/output/cgw_predictions.csv"
+                "--output_dir", "tests/output/inference_results",
+                "--skip_if_file_exists"
             ]
         },
         {

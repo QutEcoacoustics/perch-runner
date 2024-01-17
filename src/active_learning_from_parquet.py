@@ -15,7 +15,7 @@ from train_linear_model_slim import train_and_save
 
 
 
-def active_learning(labelled_source, model_output_file, embedding_model_version, embeddings_dir, search_results_file, skip_if_file_exists = False):
+def active_learning(labelled_source, model_output_file, embedding_model_version, embeddings_dir, search_results_dir, skip_if_file_exists = False):
 
     if skip_if_file_exists and Path(model_output_file).exists() and Path(model_output_file + '.labels.json').exists():
         classifier_model = model_output_file
@@ -24,12 +24,9 @@ def active_learning(labelled_source, model_output_file, embedding_model_version,
     else:
         classifier_model, labels = train_and_save(labelled_source, model_output_file, embedding_model_version)
 
-    if skip_if_file_exists and Path(search_results_file).exists():
-        inference_results = pd.read_csv(search_results_file)
-    else:
-        inference_results = process_embeddings(embeddings_dir, classifier_model, search_results_file, labels)
+    process_embeddings(embeddings_dir, classifier_model, search_results_dir, labels, skip_if_file_exists)
 
-    display_search_results(inference_results, tuple(labels) + ('unknown',))
+    display_search_results_from_folder(search_results_dir, tuple(labels) + ('unknown',))
 
 
 
@@ -48,6 +45,13 @@ def plot_logits(inference_results, target_class, target_logit = None):
     plt.show()
 
 #@title Display results for the target label. { vertical-output: true }
+
+def display_search_results_from_folder(inference_dir, labels):
+
+    # reads all csvs in the given folder and concatenates them into a single dataframe
+    # then calls display_search_results with this dataframe
+    inference_results_df = pd.concat([pd.read_csv(file) for file in Path(inference_dir).rglob('*.csv')])
+    display_search_results(inference_results_df, tuple(labels) + ('unknown',))
 
 
 def display_search_results(results_df, labels, target_label='pos', sample_rate = 32000):
@@ -103,9 +107,9 @@ if __name__ == "__main__":
     parser.add_argument("--model_output_file", default='/output/trained_model.keras', help="where to save the model")
     parser.add_argument("--embedding_model_version", default=4, help="path to embedding model")
     parser.add_argument("--embeddings_dir", help="path to directory of embeddings files")
-    parser.add_argument("--search_results", help="save the results here")
+    parser.add_argument("--search_results_dir", help="save the inference results here")
     parser.add_argument("--skip_if_file_exists", default=0, type=int, help="if true, will not perform any step where the output file already exists")
     args = parser.parse_args()
     #config = config_dict.create(**vars(args))
 
-    active_learning(args.labelled_source, args.model_output_file, int(args.embedding_model_version), args.embeddings_dir, args.search_results, bool(int(args.skip_if_file_exists)))
+    active_learning(args.labelled_source, args.model_output_file, int(args.embedding_model_version), args.embeddings_dir, args.search_results_dir, bool(int(args.skip_if_file_exists)))
