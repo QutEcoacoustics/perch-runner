@@ -36,9 +36,6 @@ embeddings_ds = tf_examples.create_embeddings_dataset(
     embeddings_path, file_glob='embeddings-*')
 
 
-def parse_example(batch):
-   
-
 
 def classify_batch(batch):
     """

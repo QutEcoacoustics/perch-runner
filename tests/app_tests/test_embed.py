@@ -9,6 +9,7 @@ from src import embed_audio_slim
 from src import batch
 from ml_collections import config_dict
 
+
 def test_embed_one_file():
 
     embeddings = embed_audio_slim.embed_one_file("tests/files/100sec.wav")
@@ -60,7 +61,7 @@ def test_embed_files():
 
 def test_batch_entrypoint_item_0_1():
 
-    batch.main('generate', source_csv='tests/files/batch_files.csv', start_row=0, end_row=1, config_file=None)
+    batch.batch('generate', source_csv='tests/files/batch_files.csv', start_row=0, end_row=1, config_file=None)
 
     assert Path('tests/output/100sec.parquet').exists()
     assert Path('tests/output/some_subfolder/200sec.parquet').exists()
@@ -69,7 +70,7 @@ def test_batch_entrypoint_item_0_1():
 
 def test_batch_entrypoint_item_2():
 
-    batch.main('generate', source_csv='tests/files/batch_files.csv', start_row=2, end_row=2, config_file=None)
+    batch.batch('generate', source_csv='tests/files/batch_files.csv', start_row=2, end_row=2, config_file=None)
 
     assert not Path('tests/output/100sec.parquet').exists()
     assert not Path('tests/output/some_subfolder/200sec.parquet').exists()

@@ -7,13 +7,15 @@ A docker container that runs Perch.
 This container has three basic functions:
 
 1. Generate Perch embeddings for a given audio file
-2. To classify the embeddings given an audio file and one or more additional linear classifiers
-3. To measure distance between a given sample and a given audio file
+2. To classify the embeddings given an audio file and one or more additional linear classifier
+3. To measure distance between a given sample and a given audio file (Not implemented Yet)
 
 All three commands output results in 5 second chunks.
 
 At this time we're choosing not to reuse embeddings. It is easier to (though much much slower)
 to ignore the caching and model version problems that come with reusing embeddings.
+
+4. To train a linear classifier from a set of labelled audio clips, which will output a model file and json metadata file. 
 
 ### Generate embeddings
 
@@ -48,7 +50,7 @@ generate [-F|--format] [-c|--config <config-file>] <input-file> <output-director
 hop_length_seconds: 5.0
 ```
 
-#### Example
+#### Examples
 
 ```bash
 cd /data
@@ -132,3 +134,18 @@ curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
 curl -o query.wav https://api.ecosounds.org/audio_recordings/456/media.wav?start=10&end=15
 docker run -v /data:/data perch-runner distance -c /data/config.yml /data/audio.wav /data/query.wav /data/output
 ```
+
+
+## Batch Mode
+
+The "generate" and "inference" commands can be also be used in batch mode by altering the entrypoint to `/app/src/batch.py`
+
+
+# Tests
+
+## Host tests
+
+To test the docker container works as expected from the host:
+1. Into a virtual environment install the testing dependencies with `pip install -r requirements-host.txt`
+2. Run `pytest 
+

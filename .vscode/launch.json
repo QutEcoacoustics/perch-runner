@@ -59,8 +59,8 @@
             "program": "src/train_linear_model_slim.py",
             "console": "integratedTerminal",
             "args": [
-                "--source", "/phil/plains_wanderer_labelled/tiny_sample/",
-                "--output_file", "/output/trained_model_3cl.keras"
+                "--source", "/phil/perch_projects/pw/labelled_data/sorted_no_raven",
+                "--output_file", "/output/trained_model_pw_02.keras"
             ]
         },
         {

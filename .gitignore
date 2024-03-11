@@ -4,7 +4,7 @@ tests/output/*
 
 !test/output/.gitkeep
 
-scripts/*
+local_scripts/*
 
 *.ipynb_checkpoints/
 *.ipynb_checkpoints/*

@@ -1,0 +1,1 @@
+This scripts can be run to launch the docker contain and run the app from the host in docker

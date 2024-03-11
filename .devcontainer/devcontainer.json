@@ -29,13 +29,16 @@
 	"mounts": [
         //"source=${localWorkspaceFolder}/src,target=/app/src,type=bind",
 		    // "source=${localWorkspaceFolder}/tests,target=/app/tests,type=bind",
-        "source=/mnt/napco_survey_project_audio_simlink,target=/mnt/input,type=bind",
+        "source=/mnt/availae_results,target=/mnt/availae_results,type=bind",
+		"source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil/output,target=/output,type=bind"
 	],
 
+	//"workspaceMount": "source=vscode-extensions,target=/vscode/extensions,type=volume",
+
 	// Uncomment to connect as a non-root user if you've added one. See https://aka.ms/vscode-remote/containers/non-root.
-	// "remoteUser": "perchuser",
+	"remoteUser": "appuser",
 
 	// Configure tool-specific properties.
 	"customizations": {
@@ -47,5 +50,6 @@
 				"ms-python.pylint"
 			]
 		}
-	}
+	},
+
 }

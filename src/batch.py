@@ -41,10 +41,9 @@ def read_items(source_csv, start_row, end_row):
     return items
 
 
-def main(command, source_csv, start_row, end_row, config_file, overwrite_existing=False):
+def batch(command, source_csv, start_row, end_row, config_file, overwrite_existing=False):
 
     items = read_items(source_csv, start_row, end_row)
-
     config = parse_config(config_file)
 
     for item in items:
@@ -57,9 +56,6 @@ def main(command, source_csv, start_row, end_row, config_file, overwrite_existin
             match command:
                 case "generate":
                     embed_file_and_save(item['source'], item['output'], config)
-                case "train":
-                    # train_linear_model.train(args.source_file, config, args.output_folder)
-                    print("train")
                 case "inference":
                     # inference_slim.analze
                     print("inference")
@@ -67,10 +63,11 @@ def main(command, source_csv, start_row, end_row, config_file, overwrite_existin
                     print("invalid command")
 
 
-if __name__ == "__main__":
-
+def main ():
+    """Just the arg parsing from command line"""
+    valid_commands = ('generate', 'inference')
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", help="generate | train | inference")
+    parser.add_argument("command", choices=list(valid_commands), help=" | ".join(valid_commands))
     parser.add_argument("--source_csv", help="path to a csv that has the columns 'source' and 'output'")
     parser.add_argument("--start_row", default=None, help="which row on the csv to start from (zero index)")
     parser.add_argument("--end_row", help="last row in the csv to process (zero index)")
@@ -78,4 +75,10 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite_existing", default=False, help="if true, will overwrite existing files, else will skip if exists")
     args = parser.parse_args()
     main(args.command, args.source_csv, int(args.start_row), int(args.end_row), args.config_file, args.overwrite_existing)
+
+
+if __name__ == "__main__":
+    main()
+
+
 

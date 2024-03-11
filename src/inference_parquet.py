@@ -32,7 +32,8 @@ def load_model(model_path):
 
 def process_embeddings(embeddings_path, classifier_model, output_path, skip_if_file_exists=False):
     """
-    @param classifier_model: either a tuple of (model, labels) or a path to a saved model (where saved model labels path is model_path + '.labels.json' by convention)
+    @param classifier_model: either a tuple of (model, labels) or a path to a saved model 
+                             (where saved model labels path is model_path + '.labels.json' by convention). 
     """
     if isinstance(classifier_model, str):
        embeddings_classifier, labels = load_model(classifier_model)
@@ -247,7 +248,7 @@ def classify_items(embeddings_ds, label_names, use_progress_bar = False):
     return all_results
 
 
-if __name__ == "__main__":
+def main ():
     parser = argparse.ArgumentParser()
     parser.add_argument("--embeddings_dir", help="path to directory of embeddings files")
     parser.add_argument("--model_path", help="path to the saved classifier model")
@@ -255,3 +256,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip_if_file_exists", action='store_true', help="skip processing if the output file already exists")
     args = parser.parse_args()
     process_embeddings(args.embeddings_dir, args.model_path, args.output_dir, args.skip_if_file_exists)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,4 @@
+# When running this app in the docker container, we can test it from the host by running the scripts that launch the 
+# container. This file contains the requirments to run the tests from the host that do this. 
+
+pytest

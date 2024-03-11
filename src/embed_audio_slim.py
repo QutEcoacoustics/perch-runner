@@ -163,16 +163,20 @@ def save_embeddings(embeddings: np.array, destination: str, source: str=None, fi
         case _:
             raise ValueError(f'Invalid file type for saving embeddings data frame: {file_type}')
 
+
+# def main ():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--source_file", help="path to the file to analyze")
+#     parser.add_argument("--output_file", help="file to save embeddings to")
+#     parser.add_argument("--max_segments", default=-1, type=int, help="only analyse this many segments of the file. Useful for debugging quickly. If ommitted will analyse all")
+#     parser.add_argument("--segment_length", default=60, type=int,  help="the file is split into segments of this duration in sections to save loading entire files into ram")
+#     parser.add_argument("--hop_size", default=5, type=float,  help="create an 5 second embedding every this many seconds. Leave as default 5s for no overlap and no gaps.")
+#     args = parser.parse_args()
+#     config = config_dict.create(**vars(args))
+
+#     embeddings = embed_one_file(args.source_file, config)
+#     save_embeddings(embeddings, args.output_file, args.source_file)
       
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--source_file", help="path to the file to analyze")
-    parser.add_argument("--output_folder", help="file to embeddings to")
-    parser.add_argument("--max_segments", default=-1, type=int, help="only analyse this many segments of the file. Useful for debugging quickly. If ommitted will analyse all")
-    parser.add_argument("--segment_length", default=60, type=int,  help="the file is split into segments of this duration in sections to save loading entire files into ram")
-    parser.add_argument("--hop_size", default=5, type=float,  help="create an 5 second embedding every this many seconds. Leave as default 5s for no overlap and no gaps.")
-    args = parser.parse_args()
-    config = config_dict.create(**vars(args))
-
-    embed_one_file(args.source_file, args.output_folder, config)
+# if __name__ == "__main__":
+#     main()
