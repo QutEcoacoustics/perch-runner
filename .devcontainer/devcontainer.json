@@ -30,7 +30,7 @@
         //"source=${localWorkspaceFolder}/src,target=/app/src,type=bind",
 		    // "source=${localWorkspaceFolder}/tests,target=/app/tests,type=bind",
         "source=/mnt/availae_results,target=/mnt/availae_results,type=bind",
-		"source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
+		    "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
         "source=/mnt/c/Users/Administrator/Documents/phil/output,target=/output,type=bind"
 	],
@@ -44,12 +44,21 @@
 	"customizations": {
 		// Configure properties specific to VS Code.
 		"vscode": {
-			"settings": {},
+			"settings": {
+				"python.testing.pytestArgs": [
+					"tests/app_tests"
+				]
+			},
 			"extensions": [
 				"ms-python.python",
 				"ms-python.pylint"
 			]
 		}
 	},
+	"settings": {
+		"python.testing.pytestArgs": [
+			"tests/app_tests"
+		]
+	}
 
 }

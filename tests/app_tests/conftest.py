@@ -1,5 +1,7 @@
 # pytest_plugins = [
-#   "tests.fixtures.embeddings",
+#   "tests.app_test.fixtures.embeddings",
+#   "tests.app_test.fixtures.clear_output_files"
 # ]
 
-from tests.app_tests.fixtures import *
+from .fixtures.embeddings import *  # noqa: F401
+# from .fixtures.clear_output_files import *  # noqa: F401

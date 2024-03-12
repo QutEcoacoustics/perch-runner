@@ -1,16 +1,16 @@
 import pytest
 import subprocess
-import os
+from pathlib import Path
 
 def test_embed_script():
 
     # Run the embed helper script
-    subprocess.run(["./scripts/embed.sh"], check=True)
+    command = ["./scripts/embed.sh", "./tests/files/100sec.wav", "./tests/output/"]
+    print(f'running command: {" ".join(command)}')
+    subprocess.run(command, check=True)
 
     # Specify the expected output files
-    expected_output_files = ["output_file1.txt", "output_file2.jpg", ...] 
+    expected_output_files = ["./tests/output/100sec.wav.parquet"] 
 
-    # Check if files exist in the output directory
-    output_dir = "./tests/output"
     for file in expected_output_files:
-        assert os.path.exists(os.path.join(output_dir, file))
+        assert Path(file).exists()

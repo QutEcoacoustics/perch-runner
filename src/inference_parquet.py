@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from functools import partial
 import random
+from dataclasses import dataclass
+
 
 import keras
 from ml_collections import config_dict
@@ -19,26 +21,92 @@ import tqdm
 # and for things like referring to keys in the embedding metadata we 
 # use constants defined here
 from chirp.inference import tf_examples
-from data_frames import df_to_embeddings
+from src.data_frames import df_to_embeddings
+
+@dataclass
+class Classifier:
+    model: keras.Model
+    labels: list
 
 
-def load_model(model_path):
-    model = keras.models.load_model(model_path)
-    with open(model_path + '.labels.json') as f:
+
+def find_model(model_path):
+    """
+    looks for a model with absolute path, or relative to the container's models directory or relative to the current path
+    returns the path to the .keras file and the .labels.json file
+    if a keras file or labels file is missing, it will return None for that file
+    the path can be either to a directory or to a keras file. If it's a directory, it will look for a .keras file in the directory
+    if it's a file, it will look for a .labels.json file in the same directory
+    """
+
+    # for model in all locations relative to here, in order of preference
+    locations = ['', '/models', Path.cwd()]
+
+    for location in locations:
+
+        cur_model_path = Path(location) / model_path
+
+        if Path(cur_model_path).is_dir():
+            keras_file = next((file for file in cur_model_path.glob('*.keras') if file.is_file()), None)
+            labels_file = next((file for file in cur_model_path.glob('*.labels.json') if file.is_file()), None)
+            return keras_file, labels_file
+
+        elif Path(cur_model_path).is_file():
+            keras_file = cur_model_path
+            labels_file = keras_file.with_suffix(f"{keras_file.suffix}.labels.json")
+            return keras_file, labels_file
+        
+    return None, None
+
+        
+
+
+def load_classifier(classifier) -> Classifier:
+    """
+    @param model: either:
+                 - a classifier dataclass instance (i.e. model + labels)
+                 - a tuple of (a keras model, list of labels) or, where to load these from, i.e:
+                 - path to either a .keras file that has a corresponding sibling .labels.json file
+                 - the path to a folder containing one .keras file and a corresponding labels file
+    """
+
+    if isinstance(classifier, Classifier):
+        # already a classifier instance, just return it
+        return classifier
+    elif isinstance(classifier, tuple):
+        # already have the model and labels, just construct the classifier dataclass instance
+        model, labels = classifier
+        return Classifier(model=model, labels=labels)
+    else:
+        # assume it's a path to a saved model. We now need to load it
+        model_path = Path(classifier)
+
+    keras_file, labels_file = find_model(model_path) 
+
+    if keras_file is None:
+        raise ValueError(f'no keras file found at {model_path}')
+
+    if not Path(labels_file).is_file():
+        raise ValueError(f'no .labels.json file found at {model_path}')
+    
+    model = keras.models.load_model(keras_file)
+    
+    with open(labels_file) as f:
         labels = tuple(json.load(f))
-    return model, labels
+
+    return Classifier(model=model, labels=labels)
 
 
 
 def process_embeddings(embeddings_path, classifier_model, output_path, skip_if_file_exists=False):
     """
+    @param embeddings_path: path to the directory of embeddings files
     @param classifier_model: either a tuple of (model, labels) or a path to a saved model 
                              (where saved model labels path is model_path + '.labels.json' by convention). 
     """
-    if isinstance(classifier_model, str):
-       embeddings_classifier, labels = load_model(classifier_model)
-    else:
-       embeddings_classifier, labels = classifier_model
+
+    embeddings_classifier = load_classifier(classifier_model)
+
 
     # list of paths to the embeddings files relative to the embeddings_path
     embeddings_files_relative = [path.relative_to(embeddings_path) for path in Path(embeddings_path).rglob('*.parquet')]
@@ -55,24 +123,41 @@ def process_embeddings(embeddings_path, classifier_model, output_path, skip_if_f
             #print(f'skipping {embedding_file} as {file_output_path} already exists')
             continue
         #print(f'processing {index} of {len(embeddings_files_relative)}: {embedding_file}')
-        df = pd.read_parquet(embeddings_path / embedding_file)
-        embeddings_ds = create_tf_dataset(df)
-        #debug_classifier(embeddings_ds, embeddings_classifier)
-        # lazy map doesn't get executed until we iterate over the dataset
-        classify_function = partial(classify_batch, embeddings_classifier=embeddings_classifier)
-        embeddings_ds = embeddings_ds.map(classify_function)
-        # these must match the order of the classes in the classifier model
-        # TODO: save these with and retrieve from the model
-
-        results = classify_items(embeddings_ds, labels)
-        # just get the scores, fname and offset. no distances (not sure what this even is) or embeddings
-        results_df = pd.DataFrame(results, columns=['filename', 'offset_seconds'] + list(labels))
-
-        file_output_path.parent.mkdir(parents=True, exist_ok=True)
-        results_df.to_csv(file_output_path, index=False)
+        results = classify_embeddings_file(embeddings_path / embedding_file, embeddings_classifier)
+        save_classification_results(results, file_output_path)
 
     print(f'finished processing {len(embeddings_files_relative)} embeddings files')
-    
+
+
+
+
+def classify_embeddings_file(embedding_file, classifier):
+    classifier = load_classifier(classifier)
+    df = pd.read_parquet(embedding_file)
+    return classify_df(df, classifier)
+
+
+def save_classification_results(results_df, file_output_path):
+
+    file_output_path.parent.mkdir(parents=True, exist_ok=True)
+    results_df.to_csv(file_output_path, index=False)
+
+
+def classify_df(embeddings_df, classifier):
+        
+    embeddings_ds = create_tf_dataset(embeddings_df)
+    #debug_classifier(embeddings_ds, embeddings_classifier)
+    # lazy map doesn't get executed until we iterate over the dataset
+    classify_function = partial(classify_batch, embeddings_classifier=classifier.model)
+    embeddings_ds = embeddings_ds.map(classify_function)
+    # these must match the order of the classes in the classifier model
+    # TODO: save these with and retrieve from the model
+
+    results = classify_items(embeddings_ds, classifier.labels)
+    # just get the scores, fname and offset. no distances (not sure what this even is) or embeddings
+    results_df = pd.DataFrame(results, columns=['filename', 'offset_seconds'] + list(classifier.labels))
+    return results_df
+
 
 
 def debug_classifier(ds, model):
@@ -108,6 +193,11 @@ def debug_classifier(ds, model):
    
 
 def read_parquet_files(folder_path):
+    """
+    deprecated. we process file by file and save each file to its own results file now
+    returns a dataframe of all the parquet files in the folder 
+    concatenated rows
+    """
     # Create a Path object for the folder
     folder = Path(folder_path)
     
@@ -185,6 +275,7 @@ def classify_batch(batch, embeddings_classifier):
     """
     based on the original classify_batch function in perch search
     except we don't have a target_index, we just return scores for all classes
+    The original was optimised to make searching for a target logit of a target class amongst all embeddings very vast
     """
     emb = batch[tf_examples.EMBEDDING]
     emb_shape = tf.shape(emb)
@@ -249,6 +340,10 @@ def classify_items(embeddings_ds, label_names, use_progress_bar = False):
 
 
 def main ():
+    """
+    entrypoint to this script from the command line allows us to process a directory of embeddings
+    files and save the results to a directory of csv files
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--embeddings_dir", help="path to directory of embeddings files")
     parser.add_argument("--model_path", help="path to the saved classifier model")

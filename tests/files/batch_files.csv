@@ -1,4 +1,0 @@
-source,output
-tests/files/100sec.wav,tests/output/100sec.parquet
-tests/files/200sec.wav,tests/output/some_subfolder/200sec.parquet
-tests/files/100sec.wav,tests/output/some_subfolder/100sec_again.parquet

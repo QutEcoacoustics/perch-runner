@@ -1,0 +1,4 @@
+source,output
+tests/files/audio/100sec.wav,tests/output/100sec.parquet
+tests/files/audio/200sec.wav,tests/output/some_subfolder/200sec.parquet
+tests/files/audio/100sec.wav,tests/output/some_subfolder/100sec_again.parquet

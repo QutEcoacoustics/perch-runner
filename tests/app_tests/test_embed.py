@@ -12,7 +12,7 @@ from ml_collections import config_dict
 
 def test_embed_one_file():
 
-    embeddings = embed_audio_slim.embed_one_file("tests/files/100sec.wav")
+    embeddings = embed_audio_slim.embed_one_file("tests/files/audio/100sec.wav")
 
     destination = "tests/output/100sec_embeddings.csv"
     embed_audio_slim.save_embeddings(embeddings, destination)
@@ -23,7 +23,7 @@ def test_embed_one_file():
 
 def test_embed_one_file_and_save():
     
-    source = "tests/files/100sec.wav"
+    source = "tests/files/audio/100sec.wav"
     destination = "tests/output/100sec_embeddings.parquet"
 
     embed_audio_slim.embed_file_and_save(source, destination)
@@ -39,8 +39,8 @@ def test_embed_files():
     two = Path("tests/input/files/two")
     one.mkdir(parents=True, exist_ok=True)
     two.mkdir(parents=True, exist_ok=True)
-    shutil.copy("tests/files/100sec.wav", one)
-    shutil.copy("tests/files/100sec.wav", two)
+    shutil.copy("tests/files/audio/100sec.wav", one)
+    shutil.copy("tests/files/audio/100sec.wav", two)
 
     source_folder = "tests/input/files"
     output_folder = "tests/output"
@@ -60,8 +60,9 @@ def test_embed_files():
 
 
 def test_batch_entrypoint_item_0_1():
+    """Test batch processing from row 0 to 1 of the batch list"""
 
-    batch.batch('generate', source_csv='tests/files/batch_files.csv', start_row=0, end_row=1, config_file=None)
+    batch.batch('generate', source_csv='tests/files/batch_lists/batch_embed.csv', start_row=0, end_row=1, config_file=None)
 
     assert Path('tests/output/100sec.parquet').exists()
     assert Path('tests/output/some_subfolder/200sec.parquet').exists()
@@ -69,8 +70,9 @@ def test_batch_entrypoint_item_0_1():
 
 
 def test_batch_entrypoint_item_2():
+    """Test batch processing from row 2 to 2 of the batch list"""
 
-    batch.batch('generate', source_csv='tests/files/batch_files.csv', start_row=2, end_row=2, config_file=None)
+    batch.batch('generate', source_csv='tests/files/batch_lists/batch_embed.csv', start_row=2, end_row=2, config_file=None)
 
     assert not Path('tests/output/100sec.parquet').exists()
     assert not Path('tests/output/some_subfolder/200sec.parquet').exists()

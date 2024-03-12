@@ -8,7 +8,7 @@ import inspect
 
 def test_embed_command(mocker) -> None:
 
-    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source_file', 'tests/files/100sec.wav', '--output_file', 'tests/output/100sec.wav.parquet'])
+    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source_file', 'tests/files/100sec.wav', '--output_folder', 'tests/output/'])
 
     mocked_embed_file_and_save = mocker.patch('src.app.embed_file_and_save')
 
@@ -16,7 +16,7 @@ def test_embed_command(mocker) -> None:
     
     main()
     
-    mocked_embed_file_and_save.assert_called_once_with('tests/files/100sec.wav', 'tests/output/100sec.wav.parquet', None)
+    mocked_embed_file_and_save.assert_called_once_with('tests/files/100sec.wav', 'tests/output/', None)
 
 
 

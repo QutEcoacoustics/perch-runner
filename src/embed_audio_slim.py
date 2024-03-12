@@ -44,7 +44,7 @@ def merge_defaults(config: config_dict):
 
 def embed_files(source_folder, output_folder, config: config_dict = None) -> None:
    """
-   for each file in source_files, embeds and then saves to output_folder with a name that matches the original 
+   for each file in source_folder, embeds and then saves to output_folder with a name that matches the original 
    """
 
    source_folder = Path(source_folder)
@@ -60,10 +60,18 @@ def embed_files(source_folder, output_folder, config: config_dict = None) -> Non
 def embed_file_and_save(source: str, destination: str, config: config_dict = None) -> None:
     """
     embeds a single file and saves to destination
+    source can be either a filename or a folder. If it's a folder that exists, the original basename is used with parquet extension
     """
 
     source = Path(source)
     destination = Path(destination)
+
+    # check if destination is a directory which exists. If so, generate the filename to save as based on the source file basename
+    if destination.is_dir():
+       destination = destination / source.name.with_suffix('.parquet')
+    elif destination.suffix not in ('.parquet', '.csv'):
+       raise ValueError(f"Invalid destination: {destination}. Must be a file with a valid extension or an existing directory")
+
 
     embeddings = embed_one_file(source, config)
     save_embeddings(embeddings, destination, source)

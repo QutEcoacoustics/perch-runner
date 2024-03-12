@@ -1,14 +1,49 @@
 #! /bin/bash
 
-# runs embed the embed script for one site of the napco survey
+# launches a docker container interactive with the necessary mounts for running inference on a folder of embeddings
 
-input_base=${2:-""}
-output_base=${3:-"/output"}
+# Argument Parsing
+source="$1"
+output="$2"
+image="${3:-qutecoacoustics/perchrunner:latest}"
 
-# run on big data without docker
-# ./run_embed.sh 050 "/mnt/availae/Phil/Australian Wildlife Conservancy/Richard Seaton/" /mnt/c/Users/Administrator/Documents/phil/output
+# Required Parameter Validation
+if [[ -z "$source" || -z "$output" ]]; then
+    echo "Error: Missing required parameters (source, output)"
+    exit 1 
+fi
 
-input="$input_base/napco_survey_project_audio/PW/inference_datasets/20230413/$1/*/*.wav"
-output="$output_base/site_$1"
+echo $(pwd)
 
-poetry run python chirp/inference/embed_audio.py "$input" "$output" "$model"
+echo $source
+
+# Source Path Checks
+if [[ ! -s "$source" ]]; then
+    echo "Error: Source audio folder does not exist: $source"
+    exit 1
+fi
+
+if [[ ! -s "$source" ]]; then
+    echo "Error: Source is empty: $source"
+    exit 1
+fi
+
+# paths to things inside the container, to be mounted
+source_container="/mnt/input"
+output_container="/mnt/output"
+
+source_folder_host=$(dirname "$source")
+source_basename=$(basename "$source")
+
+command="python /app/src/app.py generate --source_file $source_container/$source_basename --output_folder $output_container"
+ 
+echo "launching container with command: $command"
+
+docker run --user appuser:appuser --rm \
+-v "$(pwd)/src":/app/src \
+-v "$source_folder_host":$source_container \
+-v "$output":$output_container $image $command
+
+
+# add this in to mount the source directory to run changes without rebuilding
+# -v "$(pwd)/src":/app/src \
