@@ -39,11 +39,12 @@ command="python /app/src/app.py generate --source_file $source_container/$source
  
 echo "launching container with command: $command"
 
+set -x
 docker run --user appuser:appuser --rm \
 -v "$(pwd)/src":/app/src \
 -v "$source_folder_host":$source_container \
 -v "$output":$output_container $image $command
-
+set +x
 
 # add this in to mount the source directory to run changes without rebuilding
 # -v "$(pwd)/src":/app/src \

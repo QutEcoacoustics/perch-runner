@@ -4,12 +4,10 @@
 utils for parsing configuration from yml
 """
 
-# import importlib
-# importlib.reload(src.embed_audio_slim)
-
 import argparse
-from src.config import parse_config
+from src.config import load_config
 from src.embed_audio_slim import embed_file_and_save
+from src.inference_parquet import classify_file_and_save
 #import train_linear_model
 #import inference_slim
 
@@ -24,17 +22,16 @@ def main():
     parser.add_argument("--output_folder", help="where to save the result file")
     args = parser.parse_args()
 
-    config = parse_config(args.config_file)
+    config = load_config(args.config_file)
 
     if args.command == "generate":
-        
         embed_file_and_save(args.source_file, args.output_folder, config)
     elif args.command == "train":
         # train_linear_model.train(args.source_file, config, args.output_folder)
         print("train")
-    elif args.command == "inference":
+    elif args.command == "classify":
         # inference_slim.analze
-        print("inference")
+        classify_file_and_save(args.source_file, args.output_folder, config)
     else:
         print("invalid command")
 

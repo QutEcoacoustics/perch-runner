@@ -68,7 +68,7 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
 
     # check if destination is a directory which exists. If so, generate the filename to save as based on the source file basename
     if destination.is_dir():
-       destination = destination / source.name.with_suffix('.parquet')
+       destination = destination / Path(source.name).with_suffix('.parquet')
     elif destination.suffix not in ('.parquet', '.csv'):
        raise ValueError(f"Invalid destination: {destination}. Must be a file with a valid extension or an existing directory")
 

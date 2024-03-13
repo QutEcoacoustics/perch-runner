@@ -6,7 +6,7 @@ import csv
 from pathlib import Path
 
 from src.embed_audio_slim import embed_file_and_save
-from src.config import parse_config
+from src.config import load_config
 #import train_linear_model
 #import inference_slim
 
@@ -44,7 +44,7 @@ def read_items(source_csv, start_row, end_row):
 def batch(command, source_csv, start_row, end_row, config_file, overwrite_existing=False):
 
     items = read_items(source_csv, start_row, end_row)
-    config = parse_config(config_file)
+    config = load_config(config_file)
 
     for item in items:
 

@@ -21,8 +21,8 @@ if [[ -z "$source" || -z "$output" || -z "$recognizer" ]]; then
 fi
 
 # Source and Output Path Checks
-if [[ ! -d "$source" ]]; then
-    echo "Error: Source audio folder does not exist: $source"
+if [[ ! -s "$source" ]]; then
+    echo "Error: Source audio file does not exist: $source"
     exit 1
 fi
 
@@ -45,12 +45,16 @@ output_dir=$output_container/search_results
 # NOTE: unsanitized, trusted input only
 model_path="/models/$recognizer"
 
-command="python /app/src/inference_parquet.py --embeddings_dir $embeddings_container --model_path $model_path --output_dir $output_dir --skip_if_file_exists"
+#command="python /app/src/app.py --embeddings_dir $embeddings_container --model_path $model_path --output_dir $output_dir --skip_if_file_exists"
+
+command="python /app/src/app.py --source_file $source --output_dir $output  --model_path $model_path--skip_if_file_exists"
+
  
 echo "launching container with command: $command"
 
+set -x
 docker run --user appuser:appuser --rm \
-# -v "$(pwd)/src":/app/src \
--v "$embeddings_host":$embeddings_container \
--v "$output_host":$output_container $image $command
-
+-v "$(pwd)/src":/app/src \
+-v "$source":$embeddings_container \
+-v "$output":$output_container $image $command
+set +x

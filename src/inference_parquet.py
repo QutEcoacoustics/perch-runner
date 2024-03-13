@@ -98,14 +98,15 @@ def load_classifier(classifier) -> Classifier:
 
 
 
-def process_embeddings(embeddings_path, classifier_model, output_path, skip_if_file_exists=False):
+def process_embeddings(embeddings_path, output_path, config='pw.classify.yml'):
     """
+    processes all the embeddings files in a folder, including nested folders, and saves the results to the output path with the same structure
     @param embeddings_path: path to the directory of embeddings files
     @param classifier_model: either a tuple of (model, labels) or a path to a saved model 
                              (where saved model labels path is model_path + '.labels.json' by convention). 
     """
 
-    embeddings_classifier = load_classifier(classifier_model)
+    embeddings_classifier = load_classifier(config.classifier)
 
 
     # list of paths to the embeddings files relative to the embeddings_path
@@ -119,17 +120,22 @@ def process_embeddings(embeddings_path, classifier_model, output_path, skip_if_f
     for index, embedding_file in enumerate(tqdm.tqdm(embeddings_files_relative, desc="Processing")):
 
         file_output_path = output_path / embedding_file.with_suffix('.csv')
-        if skip_if_file_exists and file_output_path.exists():
+        if config.skip_if_file_exists and file_output_path.exists():
             #print(f'skipping {embedding_file} as {file_output_path} already exists')
             continue
         #print(f'processing {index} of {len(embeddings_files_relative)}: {embedding_file}')
-        results = classify_embeddings_file(embeddings_path / embedding_file, embeddings_classifier)
-        save_classification_results(results, file_output_path)
+        classify_file_and_save(embeddings_path / embedding_file, file_output_path, config)
+
 
     print(f'finished processing {len(embeddings_files_relative)} embeddings files')
 
 
 
+def classify_file_and_save(embeddings_file, file_output_path, config):
+
+    results = classify_embeddings_file(embeddings_file, config.classifier)
+    save_classification_results(results, file_output_path)
+    
 
 def classify_embeddings_file(embedding_file, classifier):
     classifier = load_classifier(classifier)
@@ -137,7 +143,7 @@ def classify_embeddings_file(embedding_file, classifier):
     return classify_df(df, classifier)
 
 
-def save_classification_results(results_df, file_output_path):
+def save_classification_results(results_df, file_output_path, config=None):
 
     file_output_path.parent.mkdir(parents=True, exist_ok=True)
     results_df.to_csv(file_output_path, index=False)

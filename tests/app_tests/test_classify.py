@@ -7,7 +7,7 @@ import pytest
 import pandas as pd
 
 from src import inference_parquet
-# from ml_collections import config_dict
+from ml_collections import config_dict
 
 valid_model_paths = ('pw', 
             'pw/trained_model_pw_02.keras', 
@@ -54,9 +54,10 @@ def test_classify_folder():
 
     source_folder = "tests/files/embeddings"
     output_folder = "tests/output"
-    model = "pw"
+    classifier = "pw"
 
-    inference_parquet.process_embeddings(source_folder, model, output_folder, True)
+    inference_parquet.process_embeddings(source_folder, output_folder, 
+                                         config_dict.create(classifier=classifier, skip_if_file_exists=True))
 
     expected_files = [Path(output_folder) / Path("100sec.csv"), 
                       Path(output_folder) / Path("200sec.csv")]

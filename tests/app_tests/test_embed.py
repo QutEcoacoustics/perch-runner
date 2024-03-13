@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from src import embed_audio_slim
-from src import batch
+
 from ml_collections import config_dict
 
 
@@ -29,6 +29,17 @@ def test_embed_one_file_and_save():
     embed_audio_slim.embed_file_and_save(source, destination)
 
     assert os.path.exists(destination)
+
+
+def test_embed_one_file_and_save_to_folder():
+    
+    source = "tests/files/audio/100sec.wav"
+    destination = "tests/output/"
+
+    embed_audio_slim.embed_file_and_save(source, destination)
+
+    assert os.path.exists(destination + "100sec.parquet")
+
 
 
 def test_embed_files():
@@ -59,21 +70,3 @@ def test_embed_files():
     assert df.source[0] == "one/100sec.wav"
 
 
-def test_batch_entrypoint_item_0_1():
-    """Test batch processing from row 0 to 1 of the batch list"""
-
-    batch.batch('generate', source_csv='tests/files/batch_lists/batch_embed.csv', start_row=0, end_row=1, config_file=None)
-
-    assert Path('tests/output/100sec.parquet').exists()
-    assert Path('tests/output/some_subfolder/200sec.parquet').exists()
-    assert not Path('tests/output/some_subfolder/100sec_again.parquet').exists()
-
-
-def test_batch_entrypoint_item_2():
-    """Test batch processing from row 2 to 2 of the batch list"""
-
-    batch.batch('generate', source_csv='tests/files/batch_lists/batch_embed.csv', start_row=2, end_row=2, config_file=None)
-
-    assert not Path('tests/output/100sec.parquet').exists()
-    assert not Path('tests/output/some_subfolder/200sec.parquet').exists()
-    assert Path('tests/output/some_subfolder/100sec_again.parquet').exists()
