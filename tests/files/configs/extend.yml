@@ -1,4 +1,4 @@
-inherit: base_config.yml
+inherit: base.yml
 parameter2: overridden_value2
 parameter3: overridden_value3
 parameter4: value4

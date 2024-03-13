@@ -29,7 +29,7 @@ def modify_locations():
 
 
 def test_load_simple_config():
-    config = load_config(f"{TEST_CONFIGS_DIR}base_config.yml")
+    config = load_config(f"{TEST_CONFIGS_DIR}base.yml")
     assert config.parameter1 == 'value1'
     assert config.parameter2 == 'value2'
     assert config.parameter3 == 'value3'
@@ -46,8 +46,9 @@ def test_load_extended_config():
 def test_load_extended_again_config():
     config = load_config(f"extend_again.yml")
     assert config.parameter1 == 'value1'
-    assert config.parameter2 == 'overridden_value2'
-    assert config.parameter3 == 'value3'
+    assert config.parameter2 == 'overridden_twice_value2'
+    assert config.parameter3 == 'overridden_value3'
+    assert config.parameter4 == 'overridden_value4'
     assert config.parameter5 == 'value5'
     assert 'inherit' not in config
 

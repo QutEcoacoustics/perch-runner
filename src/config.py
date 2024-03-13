@@ -18,7 +18,7 @@ def resolve_source(source):
         if joined.exists():
             return joined
 
-    raise FileNotFoundError(f'could not find {source} in {locations}')
+    raise FileNotFoundError(f'could not find {source} in {config_locations}')
 
 
 def parse_and_merge(yml_source, stack=None):
@@ -27,16 +27,13 @@ def parse_and_merge(yml_source, stack=None):
     this is done recursively. stack will keep track of everything loaded to ensure there is no circular reference
     """
 
+    yml_source = resolve_source(yml_source)
+
     if stack is None:
         stack = []
     elif yml_source in stack:
         raise ValueError(f'circular reference detected: {yml_source} in {stack}')
     
-
-
-    yml_source = resolve_source(yml_source)
-
-
     with open(yml_source, 'r') as f:
         config = yaml.safe_load(f)
 
