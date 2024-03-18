@@ -8,3 +8,5 @@ local_scripts/*
 
 *.ipynb_checkpoints/
 *.ipynb_checkpoints/*
+
+.vscode/launch.local.json
