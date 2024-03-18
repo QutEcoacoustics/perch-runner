@@ -11,6 +11,9 @@ from ml_collections import config_dict
 
 
 def test_embed_one_file():
+    """
+    tests both the embedding and the saving of the embeddings to csv
+    """
 
     embeddings = embed_audio_slim.embed_one_file("tests/files/audio/100sec.wav")
 
@@ -42,7 +45,7 @@ def test_embed_one_file_and_save_to_folder():
 
 
 
-def test_embed_files():
+def test_embed_folder():
 
     # set up input folder
 
@@ -56,7 +59,7 @@ def test_embed_files():
     source_folder = "tests/input/files"
     output_folder = "tests/output"
 
-    embed_audio_slim.embed_files(source_folder, output_folder)
+    embed_audio_slim.embed_folder(source_folder, output_folder)
 
     expected_files = [Path(output_folder) / Path("one/100sec.parquet"), 
                       Path(output_folder) / Path("two/100sec.parquet")]

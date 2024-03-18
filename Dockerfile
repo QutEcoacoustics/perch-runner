@@ -50,7 +50,7 @@ RUN python /app/src/download_model.py --version 4 --destination /models
 
 ENV PYTHONPATH "${PYTHONPATH}:/app/perch-main"
 
-COPY ./tests /app/tests
+#COPY ./tests /app/tests
 
 RUN useradd -u 1000 -ms /bin/bash appuser
 

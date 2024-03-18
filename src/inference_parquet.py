@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 
 import keras
-from ml_collections import config_dict
+from ml_collections import ConfigDict
 import pandas as pd
 import tensorflow as tf
 # progress bar
@@ -58,8 +58,6 @@ def find_model(model_path):
         
     return None, None
 
-        
-
 
 def load_classifier(classifier) -> Classifier:
     """
@@ -98,7 +96,7 @@ def load_classifier(classifier) -> Classifier:
 
 
 
-def process_embeddings(embeddings_path, output_path, config='pw.classify.yml'):
+def process_folder(input_path, output_path, config):
     """
     processes all the embeddings files in a folder, including nested folders, and saves the results to the output path with the same structure
     @param embeddings_path: path to the directory of embeddings files
@@ -106,13 +104,14 @@ def process_embeddings(embeddings_path, output_path, config='pw.classify.yml'):
                              (where saved model labels path is model_path + '.labels.json' by convention). 
     """
 
-    embeddings_classifier = load_classifier(config.classifier)
+    # slightly more efficient to load the classifier once rather than for each file
+    classifier = load_classifier(config.classifier)
 
 
     # list of paths to the embeddings files relative to the embeddings_path
-    embeddings_files_relative = [path.relative_to(embeddings_path) for path in Path(embeddings_path).rglob('*.parquet')]
+    embeddings_files_relative = [path.relative_to(input_path) for path in Path(input_path).rglob('*.parquet')]
 
-    # poor-person's parallel: shuffle and start script in a different process with skip_if_file_exists=True
+    # dodgy parallel: shuffle and start script in a different process with skip_if_file_exists=True
     random.shuffle(embeddings_files_relative)
 
     print(f'processing {len(embeddings_files_relative)} embeddings files')
@@ -124,33 +123,54 @@ def process_embeddings(embeddings_path, output_path, config='pw.classify.yml'):
             #print(f'skipping {embedding_file} as {file_output_path} already exists')
             continue
         #print(f'processing {index} of {len(embeddings_files_relative)}: {embedding_file}')
-        classify_file_and_save(embeddings_path / embedding_file, file_output_path, config)
+        results = classify_embeddings_file(input_path / embedding_file, classifier)
+        save_classification_results(results, file_output_path)
 
 
     print(f'finished processing {len(embeddings_files_relative)} embeddings files')
 
 
 
-def classify_file_and_save(embeddings_file, file_output_path, config):
+def classify_file_and_save(embeddings_file: Path | str, file_output_path: Path | str, config: ConfigDict):
+    """
+    Given a path to an embeddings file, run the classifier defined in the supplied config
+    and save the results
+    @param embeddings_file: path to the embeddings file
+    @param file_output_path: path to save the results to. If a folder, will give the filename to match the input file name
+    """
+    embeddings_file = Path(embeddings_file)
+    file_output_path = Path(file_output_path)
+    
+    if file_output_path.is_dir():
+        file_output_path = file_output_path / embeddings_file.with_suffix('.csv').name
 
     results = classify_embeddings_file(embeddings_file, config.classifier)
     save_classification_results(results, file_output_path)
     
 
-def classify_embeddings_file(embedding_file, classifier):
+
+def classify_embeddings_file(embedding_file: Path | str, classifier: Classifier | str):
+    """
+    Given a path to an embeddings file, run the classifier
+    and save the results to a csv file and return the results as a dataframe
+    """
     classifier = load_classifier(classifier)
     df = pd.read_parquet(embedding_file)
     return classify_df(df, classifier)
 
 
-def save_classification_results(results_df, file_output_path, config=None):
-
-    file_output_path.parent.mkdir(parents=True, exist_ok=True)
+def save_classification_results(results_df, file_output_path):
+    """
+    Save the given dataframe to the given path, creating folders if necessary
+    """
+    Path(file_output_path).parent.mkdir(parents=True, exist_ok=True)
     results_df.to_csv(file_output_path, index=False)
 
 
-def classify_df(embeddings_df, classifier):
-        
+def classify_df(embeddings_df: pd.DataFrame, classifier: Classifier):
+    """
+    Given a dataframe of embeddings, run the given classifier
+    """
     embeddings_ds = create_tf_dataset(embeddings_df)
     #debug_classifier(embeddings_ds, embeddings_classifier)
     # lazy map doesn't get executed until we iterate over the dataset
@@ -200,9 +220,8 @@ def debug_classifier(ds, model):
 
 def read_parquet_files(folder_path):
     """
-    deprecated. we process file by file and save each file to its own results file now
-    returns a dataframe of all the parquet files in the folder 
-    concatenated rows
+    ** deprecated. we process file by file and save each file to its own results file now **
+    Returns a dataframe of all the parquet files in the folder, concatenated
     """
     # Create a Path object for the folder
     folder = Path(folder_path)
@@ -345,19 +364,19 @@ def classify_items(embeddings_ds, label_names, use_progress_bar = False):
     return all_results
 
 
-def main ():
-    """
-    entrypoint to this script from the command line allows us to process a directory of embeddings
-    files and save the results to a directory of csv files
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--embeddings_dir", help="path to directory of embeddings files")
-    parser.add_argument("--model_path", help="path to the saved classifier model")
-    parser.add_argument("--output_dir", help="save the results here")
-    parser.add_argument("--skip_if_file_exists", action='store_true', help="skip processing if the output file already exists")
-    args = parser.parse_args()
-    process_embeddings(args.embeddings_dir, args.model_path, args.output_dir, args.skip_if_file_exists)
+# def main ():
+#     """
+#     entrypoint to this script from the command line allows us to process a directory of embeddings
+#     files and save the results to a directory of csv files
+#     """
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--embeddings_dir", help="path to directory of embeddings files")
+#     parser.add_argument("--model_path", help="path to the saved classifier model")
+#     parser.add_argument("--output_dir", help="save the results here")
+#     parser.add_argument("--skip_if_file_exists", action='store_true', help="skip processing if the output file already exists")
+#     args = parser.parse_args()
+#     process_embeddings(args.embeddings_dir, args.model_path, args.output_dir, args.skip_if_file_exists)
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

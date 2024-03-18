@@ -8,6 +8,7 @@ import pandas as pd
 
 from src import inference_parquet
 from ml_collections import config_dict
+from src.config import load_config
 
 valid_model_paths = ('pw', 
             'pw/trained_model_pw_02.keras', 
@@ -56,7 +57,7 @@ def test_classify_folder():
     output_folder = "tests/output"
     classifier = "pw"
 
-    inference_parquet.process_embeddings(source_folder, output_folder, 
+    inference_parquet.process_folder(source_folder, output_folder, 
                                          config_dict.create(classifier=classifier, skip_if_file_exists=True))
 
     expected_files = [Path(output_folder) / Path("100sec.csv"), 
@@ -64,6 +65,22 @@ def test_classify_folder():
     
     assert expected_files[0].exists()
     assert expected_files[1].exists()
+
+
+def test_classify_one_file():
+
+    source_file = "tests/files/embeddings/100sec.parquet"
+    output_folder = "tests/output"
+    config_file = "pw.classify.yml"
+    
+    config = load_config(config_file)
+
+    inference_parquet.classify_file_and_save(source_file, output_folder, config=config)
+
+    expected_file = Path(output_folder) / Path("100sec.csv")
+    
+    assert expected_file.exists()
+
 
 
 def test_classify_one_embeddings_file():

@@ -3,6 +3,7 @@ from pytest_mock import mocker
 
 from src.app import main
 from src import batch
+from ml_collections import ConfigDict
 
 import inspect
 
@@ -16,7 +17,7 @@ def test_embed_command(mocker) -> None:
     
     main()
     
-    mocked_embed_file_and_save.assert_called_once_with('tests/files/100sec.wav', 'tests/output/', None)
+    mocked_embed_file_and_save.assert_called_once_with('tests/files/100sec.wav', 'tests/output/', ConfigDict(**{}))
 
 
 

@@ -14,7 +14,6 @@ if [[ -z "$source" || -z "$output" ]]; then
 fi
 
 echo $(pwd)
-
 echo $source
 
 # Source Path Checks

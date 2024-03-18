@@ -14,11 +14,13 @@ config_locations = ['', './src/default_configs', Path.cwd()]
 def resolve_source(source):
 
     for loc in config_locations:
+        # print the contents of the directory loc
+        # print(f'checking {loc}:  {", ".join([str(entry.name) for entry in Path(loc).iterdir()])}')
         joined = Path(loc) / Path(source)
         if joined.exists():
             return joined
 
-    raise FileNotFoundError(f'could not find {source} in {config_locations}')
+    raise FileNotFoundError(f'could not find {source} in {config_locations}. cwd is {Path.cwd()}')
 
 
 def parse_and_merge(yml_source, stack=None):
@@ -52,6 +54,9 @@ def load_config(yml_source):
         config = {}
     else:
         config = parse_and_merge(yml_source)
+
+    print("loaded config:")
+    print(config)
 
     return config_dict.create(**config)
 

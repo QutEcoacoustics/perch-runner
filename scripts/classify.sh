@@ -20,9 +20,11 @@ if [[ -z "$source" || -z "$output" || -z "$recognizer" ]]; then
     exit 1 
 fi
 
-# Source and Output Path Checks
-if [[ ! -s "$source" ]]; then
-    echo "Error: Source audio file does not exist: $source"
+if [[ ! -e "$source" ]]; then
+    echo "Error: Source path does not exist: $source"
+    exit 1
+elif [[ -d "$source" && -z "$(ls -A "$source")" ]]; then
+    echo "Error: Source directory is empty: $source"
     exit 1
 fi
 
@@ -31,8 +33,15 @@ if [[ ! -d "$output" ]]; then
     exit 1
 fi
 
-if [[ ! -s "$source" ]]; then
-    echo "Error: Source is empty: $source"
+# based on a recognizer name, get the name of the default config file for that recognizer
+declare -A recognizer_configs
+recognizer_configs["pw"]="pw.classify.yml"
+recognizer_configs["cgw"]="cgw.classify.yml"
+
+if [[ -n ${recognizer_configs[$recognizer]} ]]; then
+    echo "Using config file: ${recognizer_configs[$recognizer]}"
+else
+    echo "Recognizer $key not supported"
     exit 1
 fi
 
@@ -41,13 +50,11 @@ embeddings_container="/mnt/embeddings"
 output_container="/mnt/output"
 output_dir=$output_container/search_results
 
-# paths to things inside the container, existing in the image (not mounted)
-# NOTE: unsanitized, trusted input only
-model_path="/models/$recognizer"
+command="python /app/src/app.py classify --source_folder $embeddings_container --output_folder $output_container  --config_file ${recognizer_configs[$recognizer]}"
 
 #command="python /app/src/app.py --embeddings_dir $embeddings_container --model_path $model_path --output_dir $output_dir --skip_if_file_exists"
 
-command="python /app/src/app.py --source_file $source --output_dir $output  --model_path $model_path--skip_if_file_exists"
+
 
  
 echo "launching container with command: $command"

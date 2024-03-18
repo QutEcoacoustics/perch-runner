@@ -42,7 +42,7 @@ def merge_defaults(config: config_dict):
   return merged_config
 
 
-def embed_files(source_folder, output_folder, config: config_dict = None) -> None:
+def embed_folder(source_folder, output_folder, config: config_dict = None) -> None:
    """
    for each file in source_folder, embeds and then saves to output_folder with a name that matches the original 
    """
@@ -55,6 +55,7 @@ def embed_files(source_folder, output_folder, config: config_dict = None) -> Non
      embeddings = embed_one_file(Path(source_folder / source_file), config)
      dest = Path(output_folder / source_file).with_suffix('.parquet')
      save_embeddings(embeddings, dest, source_file)
+
 
 
 def embed_file_and_save(source: str, destination: str, config: config_dict = None) -> None:

@@ -1,5 +1,9 @@
 #!/usr/local/bin/python
 
+"""
+Entrypoint for processing a csv of input and output files
+"""
+
 import argparse
 import yaml
 import csv
@@ -74,7 +78,7 @@ def main ():
     parser.add_argument("--config_file", default=None, help="path to the config file")
     parser.add_argument("--overwrite_existing", default=False, help="if true, will overwrite existing files, else will skip if exists")
     args = parser.parse_args()
-    main(args.command, args.source_csv, int(args.start_row), int(args.end_row), args.config_file, args.overwrite_existing)
+    batch(args.command, args.source_csv, int(args.start_row), int(args.end_row), args.config_file, args.overwrite_existing)
 
 
 if __name__ == "__main__":

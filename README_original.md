@@ -10,14 +10,15 @@ This container has three basic functions:
 2. To classify the embeddings given an audio file and one or more additional linear classifier
 3. To measure distance between a given sample and a given audio file (Not implemented Yet)
 
-Each of these output a result per 5 second chunks
+
+All three commands output results in 5 second chunks.
 
 ### Generate embeddings
 
-The `generate` command accepts one input file or one input folder and one output directory.
+The `generate` command accepts one input file and one output directory.
 
 - One file will be produced containing the embeddings for the input file.
-- The file MUST be in a self-describing format. 
+- The file MUST be in a self-describing format.
 - Each result in the file must have at least
   - a `start` value representing the start of the record in seconds
   - an `embedding` value representing the embedding for the record
