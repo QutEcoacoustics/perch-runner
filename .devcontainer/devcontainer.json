@@ -1,0 +1,64 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://github.com/microsoft/vscode-dev-containers/tree/v0.245.0/containers/docker-existing-dockerfile
+{
+	"name": "Existing Dockerfile",
+
+	"build": {
+		"dockerfile": "../Dockerfile",
+		// Update 'VARIANT' to pick a Node version: 16, 14, 12.
+		// Append -bullseye or -buster to pin to an OS version.
+		// Use -bullseye variants on local arm64/Apple Silicon.
+		"args": { "VERSION": "00001122334455_0123abc" }
+	},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Uncomment the next line to run commands after the container is created - for example installing curl.
+	// "postCreateCommand": "apt-get update && apt-get install -y curl",
+
+	// Uncomment when using a ptrace-based debugger like C++, Go, and Rust
+	// "runArgs": [ "-e BASE_PATH=/"],
+
+	"containerEnv": {},
+
+	// "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind",
+    // "workspaceFolder": "/app",
+
+	// Uncomment to use the Docker CLI from inside the container. See https://aka.ms/vscode-remote/samples/docker-from-docker.
+	"mounts": [
+        //"source=${localWorkspaceFolder}/src,target=/app/src,type=bind",
+		    // "source=${localWorkspaceFolder}/tests,target=/app/tests,type=bind",
+        "source=/mnt/availae_results,target=/mnt/availae_results,type=bind",
+		    "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
+        "source=/mnt/c/Users/Administrator/Documents/phil,target=/phil,type=bind",
+        "source=/mnt/c/Users/Administrator/Documents/phil/output,target=/output,type=bind"
+	],
+
+	//"workspaceMount": "source=vscode-extensions,target=/vscode/extensions,type=volume",
+
+	// Uncomment to connect as a non-root user if you've added one. See https://aka.ms/vscode-remote/containers/non-root.
+	"remoteUser": "appuser",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		// Configure properties specific to VS Code.
+		"vscode": {
+			"settings": {
+				"python.testing.pytestArgs": [
+					"tests/app_tests"
+				]
+			},
+			"extensions": [
+				"ms-python.python",
+				"ms-python.pylint"
+			]
+		}
+	},
+	"settings": {
+		"python.testing.pytestArgs": [
+			"tests/app_tests"
+		]
+	}
+
+}

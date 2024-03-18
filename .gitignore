@@ -1,0 +1,12 @@
+__pycache__
+
+tests/output/*
+
+!test/output/.gitkeep
+
+local_scripts/*
+
+*.ipynb_checkpoints/
+*.ipynb_checkpoints/*
+
+.vscode/launch.local.json

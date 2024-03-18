@@ -1,0 +1,66 @@
+# $schema: https://json.schemastore.org/github-action.json
+name: build
+
+on:
+  push:
+    branches:
+      - "*"
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: nschloe/action-cached-lfs-checkout@v1
+
+      - uses: docker/setup-buildx-action@v2
+        id: buildx
+        with:
+          install: true
+
+
+      - name: Build image
+        # run build script, get the version from the last line of output, then save it to the env var for use in subsequent steps
+        # echo "CRANE_VERSION=$(sh ./build.sh | tail -n1)" >> $GITHUB_ENV
+        run: |
+          source ./build.sh
+          echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+
+      # reading and writing to mounted directories doesn't work unless permissions are given to 'other'
+      - name: permissions for running tests with mounts
+        run: |
+          find ./tests -type d -exec chmod 777 {} +
+          find ./tests -type f -exec chmod 644 {} +
+
+      - name: Test from container
+        run: ./scripts/run_tests.sh
+
+      # set up python so we can run pytest to test invoking the container from the host
+      # - name: Set up Python 3.9
+      #   uses: actions/setup-python@v4
+      #   with:
+      #     python-version: 3.9
+
+      # - name: Test from Host
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install pytest 
+      #     pytest ./src/tests/end_to_end
+        
+      - name: Login to Docker Hub
+        if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: push to docker
+        if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
+        run: |
+          docker push qutecoacoustics/perchrunner:${{ env.PR_VERSION }}
+          docker push qutecoacoustics/perchrunner:latest

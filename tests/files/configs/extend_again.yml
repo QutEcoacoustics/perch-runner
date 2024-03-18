@@ -1,0 +1,4 @@
+inherit: extend.yml
+parameter2: overridden_twice_value2
+parameter4: overridden_value4
+parameter6: value6
