@@ -34,8 +34,8 @@ jobs:
       # reading and writing to mounted directories doesn't work unless permissions are given to 'other'
       - name: permissions for running tests with mounts
         run: |
-          find ./test_data -type d -exec chmod 777 {} +
-          find ./test_data -type f -exec chmod 644 {} +
+          find ./tests -type d -exec chmod 777 {} +
+          find ./tests -type f -exec chmod 644 {} +
 
       - name: Test from container
         run: ./scripts/run_tests.sh
