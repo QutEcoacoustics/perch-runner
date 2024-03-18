@@ -62,5 +62,5 @@ jobs:
       - name: push to docker
         if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
         run: |
-          docker push qutecoacoustics/perchrunner:${{ env.CRANE_VERSION }}
+          docker push qutecoacoustics/perchrunner:${{ env.PR_VERSION }}
           docker push qutecoacoustics/perchrunner:latest
