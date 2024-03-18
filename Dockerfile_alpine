@@ -1,7 +1,7 @@
-FROM --platform=linux/amd64 python:3.10-bookworm as perch_runner_dev
+FROM --platform=linux/amd64 python:3.10-alpine as perch_runner_dev
 
-RUN apt update 
-RUN apt install -y libsndfile1 ffmpeg
+# Install system dependencies
+RUN apk update && apk add --no-cache libsndfile ffmpeg git
 
 # download and install poetry
 # consider changing to pip install 'poetry==$POETRY_VERSION'
