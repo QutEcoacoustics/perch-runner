@@ -1,8 +1,10 @@
 __pycache__
 
 tests/output/*
-
 !test/output/.gitkeep
+
+tests/input/*
+!test/input/.gitkeep
 
 local_scripts/*
 
@@ -10,3 +12,6 @@ local_scripts/*
 *.ipynb_checkpoints/*
 
 .vscode/launch.local.json
+
+temp
+temp/*

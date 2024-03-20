@@ -41,7 +41,7 @@ recognizer_configs["cgw"]="cgw.classify.yml"
 if [[ -n ${recognizer_configs[$recognizer]} ]]; then
     echo "Using config file: ${recognizer_configs[$recognizer]}"
 else
-    echo "Recognizer $key not supported"
+    echo "Recognizer $recognizer not supported"
     exit 1
 fi
 
@@ -50,18 +50,19 @@ embeddings_container="/mnt/embeddings"
 output_container="/mnt/output"
 output_dir=$output_container/search_results
 
-command="python /app/src/app.py classify --source_folder $embeddings_container --output_folder $output_container  --config_file ${recognizer_configs[$recognizer]}"
-
-#command="python /app/src/app.py --embeddings_dir $embeddings_container --model_path $model_path --output_dir $output_dir --skip_if_file_exists"
+command="python /app/src/app.py classify --source $embeddings_container --output $output_container  --config_file ${recognizer_configs[$recognizer]}"
 
 
-
+# Convert to absolute paths
+absolute_source=$(realpath "$source")
+absolute_output=$(realpath "$output")
  
 echo "launching container with command: $command"
 
 set -x
 docker run --user appuser:appuser --rm \
--v "$(pwd)/src":/app/src \
--v "$source":$embeddings_container \
--v "$output":$output_container $image $command
+-v "$absolute_source":$embeddings_container \
+-v "$absolute_output":$output_container $image $command
 set +x
+
+#-v "$(pwd)/src":/app/src \

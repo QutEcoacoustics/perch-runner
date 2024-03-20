@@ -24,7 +24,7 @@ def test_embed_one_file():
     assert len(embeddings.shape) == 3
 
 
-def test_embed_one_file_and_save():
+def test_embed_file_in_file_out():
     
     source = "tests/files/audio/100sec.wav"
     destination = "tests/output/100sec_embeddings.parquet"
@@ -34,7 +34,7 @@ def test_embed_one_file_and_save():
     assert os.path.exists(destination)
 
 
-def test_embed_one_file_and_save_to_folder():
+def test_embed_file_in_folder_out():
     
     source = "tests/files/audio/100sec.wav"
     destination = "tests/output/"
