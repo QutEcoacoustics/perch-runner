@@ -5,8 +5,8 @@ Go to https://www.docker.com/get-started/ and install Docker for your computer i
 # Step 2. Embed audio
 
 1. Download the embed script from this directory
-  - Windows: [embed.ps1](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/blob/docker-launch-scripts-and-tests/scripts/embed.ps1)
-  - Linux / x86 Mac: [embed.sh](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/blob/docker-launch-scripts-and-tests/scripts/embed.sh)
+  - Windows: [embed.ps1](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/docker-launch-scripts-and-tests/scripts/embed.ps1)
+  - Linux / x86 Mac: [embed.sh](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/docker-launch-scripts-and-tests/scripts/embed.sh)
 2. Open a terminal window
 2. Change directory to this scripts directory
 3. Run the following command:
@@ -21,8 +21,8 @@ Notes
 # Step 3. Classify embeddings
 
 1. Download the classify script from this directory
-  - Windows: [classify.ps1](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/blob/docker-launch-scripts-and-tests/scripts/classify.ps1)
-  - Linux / x86 Mac: [classify.sh](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/blob/docker-launch-scripts-and-tests/scripts/classify.sh)
+  - Windows: [classify.ps1](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/docker-launch-scripts-and-tests/scripts/classify.ps1)
+  - Linux / x86 Mac: [classify.sh](https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/docker-launch-scripts-and-tests/scripts/classify.sh)
 2. Open a terminal window
 2. Change directory to this scripts directory
 3. Run the following command:

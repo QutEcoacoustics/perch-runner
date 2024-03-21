@@ -1,0 +1,32 @@
+name: Zip and Commit Files
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+
+jobs:
+  zip-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0 # Fetch all history for all tags and branches
+
+      - name: Zip ps1 Files
+        run: |
+          zip -r scripts/powershell.zip scripts/embed.ps1 scripts/classify.ps1
+
+      - name: Zip sh Files
+        run: |
+          zip -r scripts/bash.zip scripts/embed.sh scripts/classify.sh
+      
+      - name: Commit and Push
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add scripts/powershell.zip
+          git add scripts/bash.zip
+          git commit -m "Update archive.zip" || echo "No changes to commit"
+          git push
