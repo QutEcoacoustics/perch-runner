@@ -14,7 +14,7 @@ Write-Host (Get-Location)
 Write-Host $source
 
 # Source Path Checks
-if (-not (Test-Path -Path $source -PathType Leaf)) {
+if (-not (Test-Path -Path $source)) {
     Write-Host "Error: Source audio folder does not exist: $source"
     exit 1
 }
@@ -34,7 +34,11 @@ Write-Host "launching container with command: $command"
 $absolute_source = (Resolve-Path -Path $source_folder_host).Path
 $absolute_output = (Resolve-Path -Path $output).Path
 
-# Launch Docker container
-& docker run --user appuser:appuser --rm `
--v "$absolute_source":$source_container `
--v "$absolute_output":$output_container $image $command
+$source_volume = "`"${absolute_source}:${source_container}`""
+$output_volume = "`"${absolute_output}:${output_container}`""
+
+$dockerCommand = "docker run --user appuser:appuser --rm -v $source_volume -v $output_volume $image $command"
+
+Write-Host "Docker command: $dockerCommand" # For debugging
+
+Invoke-Expression $dockerCommand

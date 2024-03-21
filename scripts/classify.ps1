@@ -43,19 +43,22 @@ else {
 }
 
 # Paths inside the container, to be mounted
-$embeddings_container = "/mnt/embeddings"
+$source_container = "/mnt/embeddings"
 $output_container = "/mnt/output"
-$output_dir = Join-Path $output_container "search_results"
 
-$command = "python /app/src/app.py classify --source $embeddings_container --output $output_container --config_file $config_file"
+$command = "python /app/src/app.py classify --source $source_container --output $output_container --config_file $config_file"
+
+Write-Host "launching container with command: $command"
 
 # Convert to absolute paths
 $absolute_source = (Resolve-Path -Path $source).Path
 $absolute_output = (Resolve-Path -Path $output).Path
 
-Write-Host "launching container with command: $command"
+$source_volume = "`"${absolute_source}:${source_container}`""
+$output_volume = "`"${absolute_output}:${output_container}`""
 
-# Launch Docker container
-docker run --user appuser:appuser --rm `
--v "$absolute_source":$embeddings_container `
--v "$absolute_output":$output_container $image $command
+$dockerCommand = "docker run --user appuser:appuser --rm -v $source_volume -v $output_volume $image $command"
+
+Write-Host "Docker command: $dockerCommand" # For debugging
+
+Invoke-Expression $dockerCommand
