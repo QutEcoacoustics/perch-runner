@@ -22,3 +22,4 @@ RUN pip install librosa numpy pytest pytest-mock
 
 RUN useradd -u 1000 -ms /bin/bash appuser
 
+ENV PYTHONPATH="/app:$PYTHONPATH"
