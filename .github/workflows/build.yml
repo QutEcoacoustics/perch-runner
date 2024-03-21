@@ -38,7 +38,7 @@ jobs:
           find ./tests -type f -exec chmod 644 {} +
 
       - name: Test from container
-        run: ./scripts/run_tests.sh
+        run: ./run_tests.sh
 
       # set up python so we can run pytest to test invoking the container from the host
       # - name: Set up Python 3.9
