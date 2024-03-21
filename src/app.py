@@ -4,14 +4,7 @@
 Entrypoint for processing a single file
 """
 
-# from pathlib import Path
-# print("------ ----- ----- --- -")
-# print(Path.cwd())
-
-# for item in Path('src').iterdir():
-#     print(item)
-
-
+from pathlib import Path
 import argparse
 from src.config import load_config
 from src.embed_audio_slim import embed_file_and_save, embed_folder
