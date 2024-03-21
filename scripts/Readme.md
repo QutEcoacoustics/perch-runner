@@ -5,8 +5,8 @@ Go to https://www.docker.com/get-started/ and install Docker for your computer i
 # Step 2. Download the analysis script
 
 Right click on the link and choose "save link as"
-  - Windows: <a href="https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/docker-launch-scripts-and-tests/scripts/analyze.ps1" download>analyze.ps1</a>
-  - Linux / x86 Mac: <a href="https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/docker-launch-scripts-and-tests/scripts/analyze.sh" download>analyze.sh</a>
+  - Windows: <a href="https://raw.githubusercontent.com/QutEcoacoustics/perch-runner/main/scripts/analyze.ps1" download>analyze.ps1</a>
+  - Linux / x86 Mac: <a href="https://raw.githubusercontent.com/QutEcoacoustics/main/scripts/analyze.sh" download>analyze.sh</a>
 
 # Step 3. Embed audio
 
