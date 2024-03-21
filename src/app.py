@@ -4,12 +4,12 @@
 Entrypoint for processing a single file
 """
 
-from pathlib import Path
-print("------ ----- ----- --- -")
-print(Path.cwd())
+# from pathlib import Path
+# print("------ ----- ----- --- -")
+# print(Path.cwd())
 
-for item in Path('src').iterdir():
-    print(item)
+# for item in Path('src').iterdir():
+#     print(item)
 
 
 import argparse
