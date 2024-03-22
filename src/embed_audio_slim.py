@@ -22,39 +22,48 @@ from chirp.inference.models import TaxonomyModelTF
 
 from src import data_frames 
 
-def merge_defaults(config: config_dict):
-  """
-  gets the config based on user-supplied config and if they are missing then uses defaults
-  """
+# def merge_defaults(config: config_dict):
+#   """
+#   gets the config based on user-supplied config and if they are missing then uses defaults
+#   """
 
-  merged_config = config_dict.create(
-    hop_size = 5,
-    segment_length = 60,
-    max_segments = -1
-  )
+#   merged_config = config_dict.create(
+#     hop_size = 5,
+#     segment_length = 60,
+#     max_segments = -1,
+#     skip_if_file_exists = True
+#   )
 
-  if config is None:
-    config = config_dict.create()
+#   if config is None:
+#     config = config_dict.create()
 
-  for key in config:
-    merged_config[key] = config[key]
+#   for key in config:
+#     merged_config[key] = config[key]
 
-  return merged_config
+#   return merged_config
 
 
 def embed_folder(source_folder, output_folder, config: config_dict = None) -> None:
-   """
-   for each file in source_folder, embeds and then saves to output_folder with a name that matches the original 
-   """
+    """
+    for each file in source_folder, embeds and then saves to output_folder with a name that matches the original 
+    """
+    
+    #config = merge_defaults(config)
 
-   source_folder = Path(source_folder)
-   source_files = [file.relative_to(source_folder) for file in source_folder.rglob('*wav') if file.is_file()]
+    source_folder = Path(source_folder)
+    source_files = [file.relative_to(source_folder) for file in source_folder.rglob('*wav') if file.is_file()]
   
-   for source_file in source_files:
-     print(f'analysing {source_file}')
-     embeddings = embed_one_file(Path(source_folder / source_file), config)
-     dest = Path(output_folder / source_file).with_suffix('.parquet')
-     save_embeddings(embeddings, dest, source_file)
+    for source_file in source_files:
+        dest = Path(output_folder / source_file).with_suffix('.parquet')
+
+        if config.skip_if_file_exists and dest.exists():
+          print(f'skipping {source_file} as {dest} already exists')
+          continue
+
+        print(f'analysing {source_file}')
+        embeddings = embed_one_file(Path(source_folder / source_file), config)
+        
+        save_embeddings(embeddings, dest, source_file)
 
 
 
@@ -64,6 +73,7 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
     source can be either a filename or a folder. If it's a folder that exists, the original basename is used with parquet extension
     """
 
+
     source = Path(source)
     destination = Path(destination)
 
@@ -72,6 +82,11 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
        destination = destination / Path(source.name).with_suffix('.parquet')
     elif destination.suffix not in ('.parquet', '.csv'):
        raise ValueError(f"Invalid destination: {destination}. Must be a file with a valid extension or an existing directory")
+    
+
+    if config.skip_if_file_exists and destination.exists():
+        print(f'skipping {source} as {destination} already exists')
+        return
 
 
     embeddings = embed_one_file(source, config)
@@ -80,7 +95,7 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
 
 def embed_one_file(source: str, config: config_dict = None) -> np.array:
 
-    config = merge_defaults(config)
+    #config = merge_defaults(config)
 
     # check audio exists and get the duration
     audio_file = soundfile.SoundFile(source)

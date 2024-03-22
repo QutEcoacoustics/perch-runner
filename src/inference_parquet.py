@@ -120,7 +120,7 @@ def process_folder(input_path, output_path, config):
 
         file_output_path = output_path / embedding_file.with_suffix('.csv')
         if config.skip_if_file_exists and file_output_path.exists():
-            #print(f'skipping {embedding_file} as {file_output_path} already exists')
+            print(f'skipping {embedding_file} as {file_output_path} already exists')
             continue
         #print(f'processing {index} of {len(embeddings_files_relative)}: {embedding_file}')
         results = classify_embeddings_file(input_path / embedding_file, classifier)
@@ -143,6 +143,10 @@ def classify_file_and_save(embeddings_file: Path | str, file_output_path: Path |
     
     if file_output_path.is_dir():
         file_output_path = file_output_path / embeddings_file.with_suffix('.csv').name
+
+    if config.skip_if_file_exists and file_output_path.exists():
+        print(f'skipping {embeddings_file} as {file_output_path} already exists')
+        return
 
     results = classify_embeddings_file(embeddings_file, config.classifier)
     save_classification_results(results, file_output_path)

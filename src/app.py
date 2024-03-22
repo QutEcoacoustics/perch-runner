@@ -32,10 +32,7 @@ def main():
     if not source.exists():
         parser.error(f'source {source} does not exist')
 
-
-
-
-    config = load_config(args.config_file)
+    config = load_config(args.config_file, args.command)
 
     if source.is_file():
 

@@ -1,0 +1,17 @@
+  
+## Default configuration for the embed module
+# Any None values must be overridden by a supplied config
+
+# compute a new 5 second embedding every this many seconds. 
+# 5 seconds means no overlap and no gap
+hop_size: 5
+
+# Compute embeddings in batches of this many seconds. This is for memory/cpu optimization
+segment_length: 60
+
+# Maximum number of segments to compute. -1 means all. This is to speed things up if we only
+# want a small part of the file analyised, e.g. for testing, debugging or subsampling
+max_segments: -1
+
+# if True, don't recompute embeddings if the output file exists
+skip_if_file_exists: True

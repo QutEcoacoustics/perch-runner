@@ -6,6 +6,8 @@ from src.app import main
 from src import batch
 from ml_collections import ConfigDict
 
+from src import config
+
 import inspect
 
 def test_embed_command_file(mocker) -> None:
@@ -14,7 +16,8 @@ def test_embed_command_file(mocker) -> None:
     mocked_embed_file_and_save = mocker.patch('src.app.embed_file_and_save')
     mocked_embed_file_and_save.return_value = "hi there"
     main()
-    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio/100sec.wav'), 'tests/output/', ConfigDict(**{}))
+    default_config = config.load_config(config.default_configs['generate'])
+    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio/100sec.wav'), 'tests/output/', default_config)
 
 
 def test_embed_command_folder(mocker) -> None:
@@ -23,7 +26,8 @@ def test_embed_command_folder(mocker) -> None:
     mocked_embed_file_and_save = mocker.patch('src.app.embed_folder')
     mocked_embed_file_and_save.return_value = "hi there"
     main()
-    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio'), 'tests/output/', ConfigDict(**{}))
+    default_config = config.load_config(config.default_configs['generate'])
+    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio'), 'tests/output/', default_config)
 
 
 def test_missing_source_file(mocker) -> None:

@@ -48,7 +48,7 @@ def read_items(source_csv, start_row, end_row):
 def batch(command, source_csv, start_row, end_row, config_file, overwrite_existing=False):
 
     items = read_items(source_csv, start_row, end_row)
-    config = load_config(config_file)
+    config = load_config(config_file, command)
 
     for item in items:
 

@@ -1,1 +1,8 @@
+## Default configuration for the classify module
+# Any None values must be overridden by a supplied config
+
+# if the output file exists, don't recompute it
 skip_if_file_exists: True
+
+# Name of the the directory in /models containing the classifer to use
+classifier: None
