@@ -26,7 +26,7 @@ Notes
 2. Change directory to this scripts directory
 3. Run the following command:
   - windows: `powershell -ExecutionPolicy Bypass -File analyze.ps1 classify [path_to_audio_folder] [path_to_embeddings_folder] 'pw'`
-  - linux or intel mac: `./analyze.sh classify [path_to_audio_folder] [path_to_classifications_output_folder] 'pw'`
+  - linux or intel mac: `./analyze.sh classify [path_to_embeddings_output_folder] [path_to_classifications_output_folder] 'pw'`
 
 
 Notes
