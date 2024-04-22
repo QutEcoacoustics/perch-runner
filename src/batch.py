@@ -8,9 +8,13 @@ import argparse
 import yaml
 import csv
 from pathlib import Path
+import time
+import sys
+import tqdm
 
 from src.embed_audio_slim import embed_file_and_save
 from src.config import load_config
+from src.inference_parquet import classify_file_and_save
 #import train_linear_model
 #import inference_slim
 
@@ -57,31 +61,44 @@ def batch(command, source_csv, start_row, end_row, config_file, overwrite_existi
         else:
             print(f"processing {item['source']}")
 
-            match command:
-                case "generate":
-                    embed_file_and_save(item['source'], item['output'], config)
-                case "inference":
-                    # inference_slim.analze
-                    print("inference")
-                case _:
-                    print("invalid command")
+            sys.stdout.flush()
+
+            try:
+                match command:
+                    case "generate":
+                        embed_file_and_save(item['source'], item['output'], config)
+                    case "classify":
+                        # inference_slim.analze
+                        classify_file_and_save(item['source'], item['output'], config)
+                    case _:
+                        print("invalid command")
+            except BlockingIOError as e:
+                print(f"IO error with file {item['source']}: {e}, retrying in 1 second...")
+                time.sleep(0.1)  # Wait for before moving to the next file
+                continue  # Skip to the next iteration
+            except Exception as e:
+                print(f"An error occurred with file {item['source']}: {e}")
+                continue  
+
+
 
 
 def main ():
     """Just the arg parsing from command line"""
-    valid_commands = ('generate', 'inference')
+    valid_commands = ('generate', 'classify')
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=list(valid_commands), help=" | ".join(valid_commands))
     parser.add_argument("--source_csv", help="path to a csv that has the columns 'source' and 'output'")
     parser.add_argument("--start_row", default=None, help="which row on the csv to start from (zero index)")
     parser.add_argument("--end_row", help="last row in the csv to process (zero index)")
-    parser.add_argument("--config_file", default=None, help="path to the config file")
+    parser.add_argument("--config", default=None, help="path to the config file")
     parser.add_argument("--overwrite_existing", default=False, help="if true, will overwrite existing files, else will skip if exists")
     args = parser.parse_args()
-    batch(args.command, args.source_csv, int(args.start_row), int(args.end_row), args.config_file, args.overwrite_existing)
+    batch(args.command, args.source_csv, int(args.start_row), int(args.end_row), args.config, args.overwrite_existing)
 
 
 if __name__ == "__main__":
+
     main()
 
 

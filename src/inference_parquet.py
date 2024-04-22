@@ -7,7 +7,8 @@ from pathlib import Path
 from functools import partial
 import random
 from dataclasses import dataclass
-
+import sys
+import time
 
 import keras
 from ml_collections import ConfigDict
@@ -105,11 +106,15 @@ def process_folder(input_path, output_path, config):
     """
 
     # slightly more efficient to load the classifier once rather than for each file
+    print(f"loading classifier {config.classifier}")
     classifier = load_classifier(config.classifier)
 
 
     # list of paths to the embeddings files relative to the embeddings_path
+    print("getting list of embeddings files")
+    sys.stdout.flush()
     embeddings_files_relative = [path.relative_to(input_path) for path in Path(input_path).rglob('*.parquet')]
+    print(f'found {len(embeddings_files_relative)} embeddings files')
 
     # dodgy parallel: shuffle and start script in a different process with skip_if_file_exists=True
     random.shuffle(embeddings_files_relative)
@@ -119,12 +124,23 @@ def process_folder(input_path, output_path, config):
     for index, embedding_file in enumerate(tqdm.tqdm(embeddings_files_relative, desc="Processing")):
 
         file_output_path = output_path / embedding_file.with_suffix('.csv')
+        # print(f'skipping {embedding_file} to {file_output_path} because we are just testing')
+        # continue
         if config.skip_if_file_exists and file_output_path.exists():
             print(f'skipping {embedding_file} as {file_output_path} already exists')
             continue
         #print(f'processing {index} of {len(embeddings_files_relative)}: {embedding_file}')
-        results = classify_embeddings_file(input_path / embedding_file, classifier)
-        save_classification_results(results, file_output_path)
+
+        try:
+            results = classify_embeddings_file(input_path / embedding_file, classifier)
+            save_classification_results(results, file_output_path)
+        except BlockingIOError as e:
+            print(f"IO error with file {embedding_file}: {e}, retrying in 1 second...")
+            time.sleep(0.1)  # Wait for before moving to the next file
+            continue  # Skip to the next iteration
+        except Exception as e:
+            print(f"An error occurred with file {embedding_file}: {e}")
+            continue  # Optionally handle other exceptions and move on
 
 
     print(f'finished processing {len(embeddings_files_relative)} embeddings files')
