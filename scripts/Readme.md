@@ -29,7 +29,7 @@ Notes
   - linux or intel mac: `./analyze.sh classify [path_to_embeddings_output_folder] [path_to_classifications_output_folder] '[recognizer_id]'`
   - where [recognizer_id] is one of
     - 'pw' (Plains wanderer)
-    - 'mgw' (Mukarrthippi graw wren)
+    - 'mgw' (Mukarrthippi grasswren)
 
 
 Notes
