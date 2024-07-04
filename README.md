@@ -32,18 +32,14 @@ The `generate` command accepts one input file or one input folder and one output
 #### Usage
 
 ```
-generate [-F|--format] [-c|--config <config-file>] <input-file> <output-directory>
+generate <input-file> <output-directory>
     <input-file>                The file to generate embeddings for
     <output-directory>          The directory to write the embeddings to
     -F|--format [csv|parquet]   The format of the embeddings file: `CSV`` or `Parquet``
     -c|--config <config-file>   An optional configuration file to use
 ```
 
-#### Configuration file
 
-```yaml
-hop_length_seconds: 5.0
-```
 
 #### Examples
 
@@ -75,60 +71,9 @@ classify [-F|--format] [-c|--config <config-file> ] <input-file> <output-directo
 #### Configuration file
 
 ```yaml
-hop_length_seconds: 5.0
-classifiers:
-  - name: "classifier1"
-    tags: ["tag1", "tag2"]
-    # base64 encoded model
-    model: "asd321jhfsdhk438asdmlfas89i3mnlksf..."
-  - name: "classifier2"
-    tags: ["tag3", "tag4"]
-     # base64 encoded model
-    model: "..."
-
+classifier: keras_saved_model_path
 ```
 
-#### Example
-
-```bash 
-cd /data
-curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
-docker run -v /data:/data perch-runner classify -c /data/config.yml /data/audio.wav /data/output
-```
-
-### Distance
-
-The `distance` command accepts one input file, one output directory, and a query file.
-
-- The query file must be an audio file that is 5 seconds long.
-- The output of this command is the same as the output of the `generate` command,
-    but with an additional column `distance` that represents the distance between the
-    query and the sample.
-
-#### Usage
-
-```
-distance [-F|--format] [-c|--config <config-file> ] <input-file> <query-file> <output-directory> 
-    <input-file>                The file to generate embeddings for
-    <output-directory>          The directory to write the embeddings to
-    <query-file>                The file to use as the query
-    -c|--config <config-file>   An optional configuration file to use
-```
-
-#### Configuration file
-
-```yaml
-hop_length_seconds: 5.0
-```
-
-#### Example
-
-```bash
-cd /data
-curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
-curl -o query.wav https://api.ecosounds.org/audio_recordings/456/media.wav?start=10&end=15
-docker run -v /data:/data perch-runner distance -c /data/config.yml /data/audio.wav /data/query.wav /data/output
-```
 
 
 ## Batch Mode

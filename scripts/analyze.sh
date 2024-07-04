@@ -35,25 +35,31 @@ fi
 # Initialize command with a default value
 command=""
 
-declare -A recognizer_configs
-recognizer_configs["pw"]="pw.classify.yml"
-recognizer_configs["cgw"]="cgw.classify.yml"
+# if analysis is 'classify'
+if [[ "$analysis" == "classify" ]]; then
+    declare -A recognizer_configs
+    recognizer_configs["pw"]="pw.classify.yml"
+    recognizer_configs["cgw"]="cgw.classify.yml"
+    recognizer_configs["mgw"]="mgw.classify.yml"
 
-# Check if the recognizer argument has been provided
-if [[ -n "$recognizer" ]]; then
-    # Check if the provided recognizer is supported and set the config variable
-    if [[ -n ${recognizer_configs[$recognizer]} ]]; then
-        config=${recognizer_configs[$recognizer]}
-        echo "Using config file: $config"
-        config="--config $config"
+    # Check if the recognizer argument has been provided
+    if [[ -n "$recognizer" ]]; then
+        # Check if the provided recognizer is supported and set the config variable
+        if [[ -n ${recognizer_configs[$recognizer]} ]]; then
+            config=${recognizer_configs[$recognizer]}
+            echo "Using config file: $config"
+            config="--config $config"
+        else
+            echo "Recognizer $recognizer not supported"
+            exit 1
+        fi
     else
-        echo "Recognizer $recognizer not supported"
-        exit 1
+        # Set config variable to an empty string if no recognizer is provided
+        config=""
     fi
-else
-    # Set config variable to an empty string if no recognizer is provided
-    config=""
 fi
+
+
 
 
 # paths to things inside the container, to be mounted
