@@ -33,7 +33,9 @@ def transcode_from_parquet(parquet_filepaths, output_path):
       # read the parquet file with pandas
       embeddings_table = df_to_embeddings(pd.read_parquet(fp))
       embeddings = np.array(embeddings_table[:,:,2:1282], dtype=np.float16)
+      #print(f"embeddings shape: {embeddings.shape}")
       embeddings = tf.convert_to_tensor(embeddings, dtype=tf.float16)
+      #print(f"embeddings shape: {embeddings.shape}")
       features = {
         'filename': bytes_feature(embeddings_table[0][0][0].encode()),
         'timestamp_s': float_feature(0.0),
