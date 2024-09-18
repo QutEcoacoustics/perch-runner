@@ -82,17 +82,24 @@ def test_classify_one_file():
     assert expected_file.exists()
 
 
-
 def test_classify_one_embeddings_file():
 
     classifier = "pw"
     results = inference_parquet.classify_embeddings_file("tests/files/embeddings/100sec.parquet", classifier)
     #TODO: check rows and num columns
     assert isinstance(results, pd.DataFrame)
-    assert list(results.columns) == ['filename', 'offset_seconds', 'neg', 'pos']
+    assert list(results.columns) == ['filename', 'start_offset_seconds', 'end_offset_seconds', 'label', 'score']
+    assert results.shape[0] == 40 # 100 seconds at 5 second intervals * 2 classes
+
+
+def test_classify_one_embeddings_file_wide():
+
+    classifier = "pw"
+    results = inference_parquet.classify_embeddings_file("tests/files/embeddings/100sec.parquet", classifier, long_form=False)
+    #TODO: check rows and num columns
+    assert isinstance(results, pd.DataFrame)
+    assert list(results.columns) == ['filename', 'start_offset_seconds', 'end_offset_seconds', 'neg', 'pos']
     assert results.shape[0] == 20 # 100 seconds at 5 second intervals
-
-
 
 # def test_classify_one_file_and_save():
     
