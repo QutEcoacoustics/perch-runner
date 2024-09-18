@@ -149,14 +149,14 @@ def classify_file_and_save(embeddings_file: Path | str, file_output_path: Path |
     
 
 
-def classify_embeddings_file(embedding_file: Path | str, classifier: Classifier | str):
+def classify_embeddings_file(embedding_file: Path | str, classifier: Classifier | str, long_form=True):
     """
     Given a path to an embeddings file, run the classifier
     and save the results to a csv file and return the results as a dataframe
     """
     classifier = load_classifier(classifier)
     df = pd.read_parquet(embedding_file)
-    return classify_df(df, classifier)
+    return classify_df(df, classifier, long_form)
 
 
 def save_classification_results(results_df, file_output_path):
@@ -167,7 +167,7 @@ def save_classification_results(results_df, file_output_path):
     results_df.to_csv(file_output_path, index=False)
 
 
-def classify_df(embeddings_df: pd.DataFrame, classifier: Classifier):
+def classify_df(embeddings_df: pd.DataFrame, classifier: Classifier, long_form=True):  
     """
     Given a dataframe of embeddings, run the given classifier
     """
@@ -181,7 +181,13 @@ def classify_df(embeddings_df: pd.DataFrame, classifier: Classifier):
 
     results = classify_items(embeddings_ds, classifier.labels)
     # just get the scores, fname and offset. no distances (not sure what this even is) or embeddings
-    results_df = pd.DataFrame(results, columns=['filename', 'offset_seconds'] + list(classifier.labels))
+    non_label_columns = ['filename', 'start_offset_seconds', 'end_offset_seconds']
+    label_columns = list(classifier.labels)
+    results_df = pd.DataFrame(results, columns=non_label_columns + label_columns)
+
+    if long_form:
+        results_df = pd.melt(results_df, id_vars=non_label_columns, value_vars=label_columns, var_name='label', value_name='score')
+
     return results_df
 
 
@@ -345,7 +351,8 @@ def classify_items(embeddings_ds, label_names, use_progress_bar = False):
                 result = {
                     "embedding": ex[tf_examples.EMBEDDING][t, :, :],
                     "filename": ex['filename'].decode(),
-                    "offset_seconds": offset_s
+                    "start_offset_seconds": offset_s,
+                    "end_offset_seconds": offset_s + 5
                 }
 
                 for i, label in enumerate(label_names):
