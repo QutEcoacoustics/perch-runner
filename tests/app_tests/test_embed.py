@@ -25,13 +25,24 @@ def test_embed_one_file():
 
 
 def test_embed_file_in_file_out():
-    
-    source = "tests/files/audio/100sec.wav"
+    """
+    Tests embedding and saving to a specified parquet filename
+    Also tests that the canonical filename is parsed correctly
+    """
+
+    original_source = "tests/files/audio/100sec.wav"
+    source = "tests/input/20240101T123456Z_my-amazing-site_2468.wav"
+    shutil.copy(original_source, source)
     destination = "tests/output/100sec_embeddings.parquet"
 
     embed_audio_slim.embed_file_and_save(source, destination)
 
     assert os.path.exists(destination)
+
+    # now read the embeddings back and check the shape and source columns are as expected
+    df = pd.read_parquet(destination)
+    assert df.shape == (20, 1283)
+    assert df.source[0] == "https://api.ecosounds.org/audio_recordings/2468/original"
 
 
 def test_embed_file_in_folder_out():
