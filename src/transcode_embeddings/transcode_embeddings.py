@@ -14,12 +14,12 @@ def get_parquet_file_list(parquet_folder):
   """
   return [f for f in parquet_folder.rglob('*.parquet')]
 
-def transcode_from_parquet(parquet_filepaths, output_path):
+def transcode_from_parquet(parquet_filepaths, output_path, num_files=10):
 
   print(f"transcoding {len(parquet_filepaths)} parquet files to {output_path}")
 
 
-  with EmbeddingsTFRecordMultiWriter(output_path, num_files=256) as writer:
+  with EmbeddingsTFRecordMultiWriter(output_path, num_files=num_files) as writer:
     for i, fp in enumerate(parquet_filepaths):
 
       #print a dot without a newline every 10th file and 

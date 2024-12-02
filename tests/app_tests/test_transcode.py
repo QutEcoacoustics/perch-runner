@@ -13,7 +13,7 @@ def test_transcode_from_parquet():
   parquet_files = get_parquet_file_list(input_folder)
 
   # Call the transcode_from_parquet function
-  transcode_from_parquet(parquet_files, output_folder)
+  transcode_from_parquet(parquet_files, output_folder, num_files=256)
 
   # Assert that the output files exist by checking that 
   # there are 256 files in the output folder with filenames embeddings-[date]-%[file_num]-of-00256
