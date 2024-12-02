@@ -20,7 +20,8 @@ from ml_collections import config_dict
 
 from chirp.inference.models import TaxonomyModelTF
 
-from src import data_frames 
+from src import data_frames
+from src import baw_utils 
 
 def merge_defaults(config: config_dict):
   """
@@ -61,7 +62,7 @@ def embed_folder(source_folder, output_folder, config: config_dict = None) -> No
 def embed_file_and_save(source: str, destination: str, config: config_dict = None) -> None:
     """
     embeds a single file and saves to destination
-    source can be either a filename or a folder. If it's a folder that exists, the original basename is used with parquet extension
+    destination can be either a filename or a folder. If it's a folder that exists, the original basename is used with parquet extension
     """
 
     source = Path(source)
@@ -75,7 +76,15 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
 
 
     embeddings = embed_one_file(source, config)
+    source = baw_utils.recording_url_from_filename(source)
     save_embeddings(embeddings, destination, source)
+
+
+def parse_source(source: str, baw_host='api.ecosounds.org') -> str:
+    """
+    returns a string that is the source of the embeddings
+    """
+    return str(source)
 
 
 def embed_one_file(source: str, config: config_dict = None) -> np.array:

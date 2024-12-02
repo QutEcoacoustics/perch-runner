@@ -39,10 +39,11 @@ $config = ""
 $recognizer_configs = @{
     "pw" = "pw.classify.yml"
     "cgw" = "cgw.classify.yml"
+    "mgw" = "mgw.classify.yml"
 }
 
 # Check if the recognizer argument has been provided
-if ($recognizer) {
+if ($recognizer -and $analysis -eq "classify") {
     # Check if the provided recognizer is supported and set the config variable
     if ($recognizer_configs.ContainsKey($recognizer)) {
         $config = $recognizer_configs[$recognizer]

@@ -25,8 +25,11 @@ Notes
 1. Open a terminal window
 2. Change directory to this scripts directory
 3. Run the following command:
-  - windows: `powershell -ExecutionPolicy Bypass -File analyze.ps1 classify [path_to_audio_folder] [path_to_embeddings_folder] 'pw'`
-  - linux or intel mac: `./analyze.sh classify [path_to_embeddings_output_folder] [path_to_classifications_output_folder] 'pw'`
+  - windows: `powershell -ExecutionPolicy Bypass -File analyze.ps1 classify [path_to_audio_folder] [path_to_embeddings_folder] '[recognizer_id]'`
+  - linux or intel mac: `./analyze.sh classify [path_to_embeddings_output_folder] [path_to_classifications_output_folder] '[recognizer_id]'`
+  - where [recognizer_id] is one of
+    - 'pw' (Plains wanderer)
+    - 'mgw' (Mukarrthippi grasswren)
 
 
 Notes

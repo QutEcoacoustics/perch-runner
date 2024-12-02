@@ -7,7 +7,8 @@ scripts = [
     ["pwsh", "-ExecutionPolicy", "Bypass", "-File",  "./scripts/analyze.ps1"]
 ]
 
-index = 1
+index = 0
+#image = "pr10:latest"
 
 def test_analyze_script_classify():
 
@@ -19,7 +20,7 @@ def test_analyze_script_classify():
     shutil.copy("tests/files/embeddings/100sec.parquet", two)
 
     # Run the embed helper script
-    command = scripts[index] + ["classify", "./tests/input/", "./tests/output/", "pw"]
+    command = scripts[index] + ["classify", "./tests/input/", "./tests/output/", "mgw"]
     print(f'running command: {" ".join(command)}')
     subprocess.run(command, check=True)
 
