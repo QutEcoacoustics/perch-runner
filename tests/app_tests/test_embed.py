@@ -84,3 +84,21 @@ def test_embed_folder():
     assert df.source[0] == "one/100sec.wav"
 
 
+def test_embed_one_file_bit_depth():
+    """
+    Tests that the bit depth specified in the config is correctly applied to the embeddings array.
+    """
+    # Test each supported bit depth
+    for bit_depth in [16, 32, 64]:
+        config = config_dict.create(
+            bit_depth=bit_depth
+        )
+        
+        embeddings = embed_audio_slim.embed_one_file("tests/files/audio/100sec.wav", config)
+        
+        # Check that the dtype of the embeddings matches what we expect from the config
+        expected_dtype = embed_audio_slim.DTYPE_MAPPING[bit_depth]
+        assert embeddings.dtype == expected_dtype, f"Expected dtype {expected_dtype} for bit_depth {bit_depth}, but got {embeddings.dtype}"
+        
+        # Basic shape checks to ensure the embeddings are still valid
+        assert len(embeddings.shape) == 3

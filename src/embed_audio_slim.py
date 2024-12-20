@@ -23,6 +23,12 @@ from chirp.inference.models import TaxonomyModelTF
 from src import data_frames
 from src import baw_utils 
 
+DTYPE_MAPPING = {
+    16: np.float16,
+    32: np.float32,
+    64: np.float64
+}
+
 def merge_defaults(config: config_dict):
   """
   gets the config based on user-supplied config and if they are missing then uses defaults
@@ -31,7 +37,8 @@ def merge_defaults(config: config_dict):
   merged_config = config_dict.create(
     hop_size = 5,
     segment_length = 60,
-    max_segments = -1
+    max_segments = -1,
+    bit_depth = 16,
   )
 
   if config is None:
@@ -56,7 +63,6 @@ def embed_folder(source_folder, output_folder, config: config_dict = None) -> No
      embeddings = embed_one_file(Path(source_folder / source_file), config)
      dest = Path(output_folder / source_file).with_suffix('.parquet')
      save_embeddings(embeddings, dest, source_file)
-
 
 
 def embed_file_and_save(source: str, destination: str, config: config_dict = None) -> None:
@@ -114,7 +120,7 @@ def embed_one_file(source: str, config: config_dict = None) -> np.array:
     # an empty array of the with zero rows to concatenate to
     # 1280 embeddings plus one column for the offset_seconds
     # TODO: I think the shape will be different when we have audio separation channels
-    file_embeddings = np.empty((0, 1, 1281), dtype=np.float32)
+    file_embeddings = np.empty((0, 1, 1281), dtype=DTYPE_MAPPING[config.bit_depth])
 
     total_segments = ceil(audio_duration / config.segment_length)
     num_segments = min(config.max_segments, total_segments) if config.max_segments >= 1 else total_segments
@@ -130,10 +136,10 @@ def embed_one_file(source: str, config: config_dict = None) -> np.array:
 
       if len(audio) > 1:
         embeddings = embedding_model.embed(audio).embeddings
-
+        embeddings = embeddings.astype(DTYPE_MAPPING[config.bit_depth])
         # the last segment of the file might be smaller than the rest, so we always use its length
         # dtype should bee float32 to match the embeddings
-        offsets = np.arange(0,embeddings.shape[0]*config.hop_size,config.hop_size, dtype=np.float32).reshape(embeddings.shape[0],1,1) + offset_s
+        offsets = np.arange(0,embeddings.shape[0]*config.hop_size,config.hop_size, dtype=DTYPE_MAPPING[config.bit_depth]).reshape(embeddings.shape[0],1,1) + offset_s
 
         # if source separation was used, embeddings will have an extra dimention for channel
         # for consistency we will add the extra dimention even if there is only 1 channel
@@ -181,20 +187,3 @@ def save_embeddings(embeddings: np.array, destination: str, source: str=None, fi
         case _:
             raise ValueError(f'Invalid file type for saving embeddings data frame: {file_type}')
 
-
-# def main ():
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--source_file", help="path to the file to analyze")
-#     parser.add_argument("--output_file", help="file to save embeddings to")
-#     parser.add_argument("--max_segments", default=-1, type=int, help="only analyse this many segments of the file. Useful for debugging quickly. If ommitted will analyse all")
-#     parser.add_argument("--segment_length", default=60, type=int,  help="the file is split into segments of this duration in sections to save loading entire files into ram")
-#     parser.add_argument("--hop_size", default=5, type=float,  help="create an 5 second embedding every this many seconds. Leave as default 5s for no overlap and no gaps.")
-#     args = parser.parse_args()
-#     config = config_dict.create(**vars(args))
-
-#     embeddings = embed_one_file(args.source_file, config)
-#     save_embeddings(embeddings, args.output_file, args.source_file)
-      
-
-# if __name__ == "__main__":
-#     main()
