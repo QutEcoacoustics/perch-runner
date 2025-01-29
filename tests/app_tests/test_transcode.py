@@ -21,4 +21,3 @@ def test_transcode_from_parquet():
   # by getting a list of files that match that pattern, and checking that the length of the list is 256
   output_files = [f for f in output_folder.rglob('embeddings-*-*-of-00256')]
   assert len(output_files) == 256
-  

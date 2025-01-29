@@ -33,9 +33,7 @@ def transcode_from_parquet(parquet_filepaths, output_path, num_files=10):
       # read the parquet file with pandas
       embeddings_table = df_to_embeddings(pd.read_parquet(fp))
       embeddings = np.array(embeddings_table[:,:,2:1282], dtype=np.float16)
-      #print(f"embeddings shape: {embeddings.shape}")
       embeddings = tf.convert_to_tensor(embeddings, dtype=tf.float16)
-      #print(f"embeddings shape: {embeddings.shape}")
       features = {
         'filename': bytes_feature(embeddings_table[0][0][0].encode()),
         'timestamp_s': float_feature(0.0),
@@ -44,14 +42,3 @@ def transcode_from_parquet(parquet_filepaths, output_path, num_files=10):
       }
       ex = tf.train.Example(features=tf.train.Features(feature=features))
       writer.write(ex.SerializeToString())
-
-# def filename_to_url(filename, domain):
-
-#   # filename is made of 3 parts: datetime, site, and file number, followed by a file extension
-#   # the 3 parts are separated by underscores. The site name might also contain an underscore
-#   # the datetime is in the format YYYYMMDDTHHmmssZ, file number is an integer, and the file extension is .parquet
-#   # we need to contruct a url like this: https://[domain]/
-
-
-
-#   return f"https://storage.googleapis.com/urban-sound-classification/{filename}"
