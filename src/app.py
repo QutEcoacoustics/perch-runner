@@ -33,8 +33,6 @@ def main():
         parser.error(f'source {source} does not exist')
 
 
-
-
     config = load_config(args.config_file)
 
     if source.is_file():
