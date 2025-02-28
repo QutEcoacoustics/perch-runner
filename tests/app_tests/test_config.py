@@ -61,3 +61,8 @@ def test_circular_reference_detection():
 def test_file_not_found():
     with pytest.raises(FileNotFoundError):
         load_config("non_existent_file.yml")
+
+
+def test_empty_config():
+    config = load_config(f"{TEST_CONFIGS_DIR}empty.yml")
+    assert dict(config) == {}
