@@ -24,6 +24,21 @@ def test_embed_one_file():
     assert len(embeddings.shape) == 3
 
 
+def test_embed_one_file_empty_config():
+    """
+    tests both the embedding and the saving of the embeddings to csv
+    """
+
+    embeddings = embed_audio_slim.embed_one_file("tests/files/audio/100sec.wav", config=config_dict.create(**{}))
+
+    destination = "tests/output/100sec_embeddings.csv"
+    embed_audio_slim.save_embeddings(embeddings, destination)
+
+    assert os.path.exists(destination)
+    assert len(embeddings.shape) == 3
+
+
+
 def test_embed_file_in_file_out():
     """
     Tests embedding and saving to a specified parquet filename

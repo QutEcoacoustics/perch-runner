@@ -38,6 +38,8 @@ def parse_and_merge(yml_source, stack=None):
     
     with open(yml_source, 'r') as f:
         config = yaml.safe_load(f)
+        if config is None:
+            config = {}
 
     # if inherit is inside the config, load an merge the parent
     if 'inherit' in config:

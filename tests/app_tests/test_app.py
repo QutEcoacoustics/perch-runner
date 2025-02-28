@@ -69,3 +69,12 @@ def test_batch_entrypoint_item_2():
     assert not Path('tests/output/100sec.parquet').exists()
     assert not Path('tests/output/some_subfolder/200sec.parquet').exists()
     assert Path('tests/output/some_subfolder/100sec_again.parquet').exists()
+
+
+def test_embed_command_empty_config(mocker) -> None:
+
+    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source', 'tests/files/audio', '--output', 'tests/output/', '--config_file', 'tests/files/configs/empty.yml'])  
+    mocked_embed_file_and_save = mocker.patch('src.app.embed_folder')
+    mocked_embed_file_and_save.return_value = "hi there"
+    main()
+    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio'), 'tests/output/', ConfigDict(**{}))
