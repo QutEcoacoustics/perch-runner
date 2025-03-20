@@ -1,15 +1,13 @@
 # embed a single audio file and save to a self-describing format
 # we don't need to store information about the file that the example comes from
 
-# Global imports
-from pathlib import Path
-import numpy as np
-# import tqdm
 import argparse
-import pandas as pd
-import soundfile
+import fnmatch
 from math import ceil
-
+import numpy as np
+import pandas as pd
+from pathlib import Path
+import soundfile
 
 from chirp import audio_utils
 
@@ -50,19 +48,52 @@ def merge_defaults(config: config_dict):
   return merged_config
 
 
-def embed_folder(source_folder, output_folder, config: config_dict = None) -> None:
-   """
-   for each file in source_folder, embeds and then saves to output_folder with a name that matches the original 
-   """
+def get_audio_files(source_folder):
+    """
+    Find all audio files within a source folder with common audio extensions.
+    Returns a list of Path objects relative to the source folder.
+    
+    Args:
+        source_folder: Path-like object pointing to the directory to search
+        
+    Returns:
+        List of Path objects relative to source_folder
+    """
+    audio_extensions = [
+        'wav', 'mp3', 'flac', 'ogg', 'aiff', 'aif', 'au', 
+        'caf', 'htk', 'svx', 'mat4', 'mat5', 'mpc', 'paf', 
+        'pvf', 'rf64', 'sd2', 'sds', 'sf', 'voc', 'w64', 
+        'wve', 'xi', 'raw', 'ircam', 'nist', 'wavex'
+    ]
+    
+    source_folder = Path(source_folder)
+    source_files = []
+    
+    for file in source_folder.rglob('*'):
+        if file.is_file():
+            for ext in audio_extensions:
+                if fnmatch.fnmatch(file.name.lower(), f'*.{ext}'):
+                    source_files.append(file.relative_to(source_folder))
+                    break
+    
+    return source_files
 
-   source_folder = Path(source_folder)
-   source_files = [file.relative_to(source_folder) for file in source_folder.rglob('*wav') if file.is_file()]
-  
-   for source_file in source_files:
-     print(f'analysing {source_file}')
-     embeddings = embed_one_file(Path(source_folder / source_file), config)
-     dest = Path(output_folder / source_file).with_suffix('.parquet')
-     save_embeddings(embeddings, dest, source_file)
+
+def embed_folder(source_folder, output_folder, config: config_dict = None) -> None:
+  """
+  for each file in source_folder, embeds and then saves to output_folder with a name that matches the original 
+  """
+
+  source_files = get_audio_files(source_folder)
+
+  if len(source_files) == 0:
+    print(f'no audio files found in {source_folder}')
+
+  for source_file in source_files:
+    print(f'analysing {source_file}')
+    embeddings = embed_one_file(Path(source_folder / source_file), config)
+    dest = Path(output_folder / source_file).with_suffix('.parquet')
+    save_embeddings(embeddings, dest, source_file)
 
 
 def embed_file_and_save(source: str, destination: str, config: config_dict = None) -> None:
@@ -74,12 +105,13 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
     source = Path(source)
     destination = Path(destination)
 
-    # check if destination is a directory which exists. If so, generate the filename to save as based on the source file basename
+    # check if destination is a directory which exists. 
+    # If so, generate the filename to save as based on the source file basename,
+    # defaulting to parquet as the output format
     if destination.is_dir():
        destination = destination / Path(source.name).with_suffix('.parquet')
     elif destination.suffix not in ('.parquet', '.csv'):
        raise ValueError(f"Invalid destination: {destination}. Must be a file with a valid extension or an existing directory")
-
 
     embeddings = embed_one_file(source, config)
     source = baw_utils.recording_url_from_filename(source)
@@ -89,6 +121,7 @@ def embed_file_and_save(source: str, destination: str, config: config_dict = Non
 def parse_source(source: str, baw_host='api.ecosounds.org') -> str:
     """
     returns a string that is the source of the embeddings
+    TODO (phil): implement this if needed
     """
     return str(source)
 

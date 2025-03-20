@@ -6,6 +6,7 @@ source="$2"
 output="$3"
 recognizer="$4"
 image="${5:-qutecoacoustics/perchrunner:latest}"
+mount_src="${PERCH_RUNNER_MOUNT_SRC:-false}"
 
 # Required Parameter Validation
 if [[ -z "$analysis" || -z "$source" || -z "$output" ]]; then
@@ -27,10 +28,6 @@ elif [[ -d "$source" && -z "$(ls -A "$source")" ]]; then
     exit 1
 fi
 
-if [[ ! -d "$output" ]]; then
-    echo "Error: Output folder does not exist: $output"
-    exit 1
-fi
 
 # Initialize command with a default value
 command=""
@@ -59,11 +56,6 @@ if [[ "$analysis" == "classify" ]]; then
     fi
 fi
 
-
-
-
-# paths to things inside the container, to be mounted
-
 # Determine input container path
 if [[ -f "$source" ]]; then
     source_base_name=$(basename "$source")
@@ -76,15 +68,26 @@ output_container="/mnt/output"
 
 command="python /app/src/app.py $analysis --source $input_container --output $output_container $config"
 
+echo "app command: $command"
 
-# Convert to absolute paths
+# # Convert to absolute paths
 absolute_host_source=$(realpath "$source")
 absolute_host_output=$(realpath "$output")
  
-echo "launching container with command: $command"
+mount_options="-v \"$absolute_host_source\":\"$input_container\" -v \"$absolute_host_output\":\"$output_container\""
 
+# Add source directory mount if mount_src is true
+echo "mount_src: $mount_src"
+if [[ "$mount_src" == "true" ]]; then
+    absolute_host_src=$(realpath "./src")
+    mount_options="$mount_options -v \"$absolute_host_src:/app/src\""
+fi
+
+docker_command="docker run --user appuser:appuser --rm $mount_options $image $command"
+
+echo "launching container with command: $docker_command"
+
+# Use the mount_options variable in the docker run command
 set -x
-docker run --user appuser:appuser --rm \
--v "$absolute_host_source":"$input_container" \
--v "$absolute_host_output":"$output_container" $image $command
+eval $docker_command
 set +x

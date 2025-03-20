@@ -6,6 +6,10 @@ param (
     [string]$image = "qutecoacoustics/perchrunner:latest"
 )
 
+# Get mount_src from environment variable or default to false
+$mount_src = if ($env:PERCH_RUNNER_MOUNT_SRC) { $env:PERCH_RUNNER_MOUNT_SRC } else { "false" }
+
+
 # Required Parameter Validation
 if (-not $analysis -or -not $source -or -not $output) {
     Write-Host "Error: Missing required parameters (--analysis, --source, --output)"
@@ -24,11 +28,6 @@ if (-not (Test-Path $source)) {
 }
 elseif ((Test-Path $source -PathType Container) -and (-not (Get-ChildItem -Path $source))) {
     Write-Host "Error: Source directory is empty: $source"
-    exit 1
-}
-
-if (-not (Test-Path $output -PathType Container)) {
-    Write-Host "Error: Output folder does not exist: $output"
     exit 1
 }
 
@@ -67,17 +66,25 @@ $output_container = "/mnt/output"
 
 $command = "python /app/src/app.py $analysis --source $input_container --output $output_container $config"
 
+Write-Host "app command: $command"
+
 # Convert to absolute paths
 $absolute_host_source = (Resolve-Path $source).Path
-$absolute_host_output = (Resolve-Path $output).Path
+$absolute_host_output = [System.IO.Path]::GetFullPath($output)
 
-$source_volume = "`"${absolute_host_source}:${input_container}`""
-$output_volume = "`"${absolute_host_output}:${output_container}`""
+# Build mount options
+$mount_options = "-v `"${absolute_host_source}:${input_container}`" -v `"${absolute_host_output}:${output_container}`""
 
-Write-Host "launching container with command: $command"
+# Add source directory mount if mount_src is true
+Write-Host "mount_src: $mount_src"
+if ($mount_src -eq "true") {
+    $absolute_host_src = (Resolve-Path "./src").Path
+    $mount_options = "$mount_options -v `"${absolute_host_src}:/app/src`""
+}
 
-$dockerCommand = "docker run --user appuser:appuser --rm -v $source_volume -v $output_volume $image $command"
+$docker_command = "docker run --user appuser:appuser --rm $mount_options $image $command"
 
-Write-Host "Docker command: $dockerCommand" # For debugging
+Write-Host "launching container with command: $docker_command"
 
-Invoke-Expression $dockerCommand
+# Use the mount_options variable in the docker run command
+Invoke-Expression $docker_command
