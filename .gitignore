@@ -1,17 +1,19 @@
-__pycache__
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
 
-tests/output/*
-!test/output/.gitkeep
+tests/mounted/output/*
+!tests/mounted/output/.gitkeep
 
-tests/input/*
-!test/input/.gitkeep
+tests/mounted/input/*
+!tests/mounted/input/.gitkeep
 
-local_scripts/*
+tests/mounted/config/*
+!tests/mounted/config/.gitkeep
+
+local_scripts/
 
 *.ipynb_checkpoints/
-*.ipynb_checkpoints/*
 
 .vscode/launch.local.json
-
-temp
-temp/*

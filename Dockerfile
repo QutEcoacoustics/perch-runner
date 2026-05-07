@@ -1,25 +1,31 @@
-FROM --platform=linux/amd64 python:3.10-bookworm as perch_runner_dev
+FROM python:3.12-slim AS base
+
+# tells uv to install packages globally instead of in a venv, since we're in a container
+ENV UV_SYSTEM_PYTHON=1
 
 RUN apt update && apt install -y libsndfile1 ffmpeg
 
-RUN mkdir /app && mkdir /app/src
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+RUN uv pip install 'perch-hoplite[tf]' pytest
+
+# --- Test Stage: runs tests and downloads models into kagglehub cache ---
+FROM base AS test
+ARG DEV=false
 WORKDIR /app
+COPY . .
+# Ensure the cache directory exists so COPY in final stage always succeeds
+RUN mkdir -p /root/.cache/kagglehub
+# Only run allow_network tests in non-dev mode — these download and cache models.
+# Full test suite is run post-build via run_tests_in_container.sh or CI.
+RUN if [ "$DEV" != "true" ]; then \
+    touch /.dockerenv && \
+    python -m pytest tests/app_tests tests/integration -v -m "allow_network"; \
+    fi
 
-COPY ./pyproject.toml /app
-
-# RUN pip install git+https://github.com/google-research/perch.git@8cc4468afaac730e77d84ac447f0874f09d10a25
-RUN pip install git+https://github.com/google-research/perch.git@3746672d406c6cfe48acb0e725248cea05f57445
-
-COPY ./src /app/src
-
-# this is the trained linear models
-COPY ./models /models
-
-# this is the embedding model
-RUN python /app/src/download_model.py --version 4 --destination /models
-
-RUN pip install librosa numpy pytest pytest-mock
-
-RUN useradd -u 1000 -ms /bin/bash appuser
-
-ENV PYTHONPATH="/app:$PYTHONPATH"
+# --- Final Stage ---
+FROM base AS final
+WORKDIR /app
+COPY . .
+COPY --from=test /root/.cache/kagglehub /root/.cache/kagglehub
+ENTRYPOINT ["python", "-m", "src.app"]

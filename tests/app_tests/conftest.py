@@ -1,7 +1,7 @@
-# pytest_plugins = [
-#   "tests.app_test.fixtures.embeddings",
-#   "tests.app_test.fixtures.clear_output_files"
-# ]
+import tqdm
+
+# Disable tqdm's monitor thread — it spawns a daemon thread that can
+# interfere with subprocess-based test isolation.
+tqdm.tqdm.monitor_interval = 0
 
 from .fixtures.embeddings import *  # noqa: F401
-# from .fixtures.clear_output_files import *  # noqa: F401

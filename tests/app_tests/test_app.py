@@ -1,80 +1,259 @@
-from pathlib import Path
-from pytest_mock import mocker 
+import argparse
+from unittest.mock import patch, MagicMock
+
 import pytest
 
 from src.app import main
-from src import batch
-from ml_collections import ConfigDict
-
-import inspect
-
-def test_embed_command_file(mocker) -> None:
-
-    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source', 'tests/files/audio/100sec.wav', '--output', 'tests/output/'])
-    mocked_embed_file_and_save = mocker.patch('src.app.embed_file_and_save')
-    mocked_embed_file_and_save.return_value = "hi there"
-    main()
-    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio/100sec.wav'), 'tests/output/', ConfigDict(**{}))
+from src.config import load_config
 
 
-def test_embed_command_folder(mocker) -> None:
+class TestArgParsing:
+    """Test that CLI args are parsed and merged into config correctly."""
 
-    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source', 'tests/files/audio', '--output', 'tests/output/'])
-    mocked_embed_file_and_save = mocker.patch('src.app.embed_folder')
-    mocked_embed_file_and_save.return_value = "hi there"
-    main()
-    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio'), 'tests/output/', ConfigDict(**{}))
+    def test_defaults_no_embed(self, tmp_path):
+        """With no --embed, embed defaults to False (no embedding)."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        args = argparse.Namespace(
+            embed=None,
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+        config = load_config(config_path=None, args=args)
+        assert config["embed"] == []
+        assert config["classify"] == set()
+
+    def test_bare_embed_flag(self, tmp_path):
+        """--embed with no value → True → resolves to parquet."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        args = argparse.Namespace(
+            embed=True,
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+        config = load_config(config_path=None, args=args)
+        assert len(config["embed"]) == 1
+        assert config["embed"][0].filetype == "parquet"
+        assert config["embed"][0].table_format == "serialized"
+
+    def test_embed_parquet(self, tmp_path):
+        """Explicitly passing --embed parquet enables embedding."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        args = argparse.Namespace(
+            embed="parquet",
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+        config = load_config(config_path=None, args=args)
+        assert len(config["embed"]) == 1
+        assert config["embed"][0].filetype == "parquet"
+        assert config["embed"][0].table_format == "serialized"
+
+    def test_embed_override(self, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        args = argparse.Namespace(
+            embed="csv",
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+        config = load_config(config_path=None, args=args)
+        assert config["embed"][0].filetype == "csv"
+
+    def test_embed_with_table_format(self, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        args = argparse.Namespace(
+            embed="parquet",
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format="columns",
+        )
+        config = load_config(config_path=None, args=args)
+        assert config["embed"][0].table_format == "columns"
+
+    def test_model_choice_override(self, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        args = argparse.Namespace(
+            embed="parquet",
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice="perch_8",
+            embedding_table_format=None,
+        )
+        config = load_config(config_path=None, args=args)
+        assert config["model_choice"] == {"perch_8"}
 
 
-def test_missing_source_file(mocker) -> None:
-    # Use a definitely non-existing file path
-    non_existing_file = 'tests/files/audio/definitely_nonexistent_file.wav'
-    # Patch `sys.argv` to simulate command line input
-    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source', non_existing_file, '--output', 'tests/output/'])
+class TestMainEntrypoint:
+    """Test main() dispatches to embed() correctly."""
 
-    # Expect the main function to raise SystemExit due to argparse error
-    with pytest.raises(SystemExit) as e:
-        main()
-    assert str(e.value) == "2", "Expected SystemExit with exit code 2 for argparse error"
+    @patch("src.app.embed")
+    def test_main_calls_embed(self, mock_embed, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
 
+        with patch(
+            "sys.argv",
+            ["app", "--source", str(source), "--output", str(output), "--embed"],
+        ):
+            main()
 
-def test_missing_source_folder(mocker) -> None:
-    # Use a definitely non-existing folder path
-    non_existing_folder = 'tests/files/nonexistent_folder'
-    # Patch `sys.argv` to simulate command line input
-    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source', non_existing_folder, '--output', 'tests/output/'])
+        mock_embed.assert_called_once()
+        config = mock_embed.call_args[0][0]
+        assert config["source"] == source
+        assert config["output"] == output
+        assert len(config["embed"]) >= 1
+        assert config["embed"][0].filetype == "parquet"
 
-    # Expect the main function to raise SystemExit due to argparse error
-    with pytest.raises(SystemExit) as e:
-        main()
-    assert str(e.value) == "2", "Expected SystemExit with exit code 2 for argparse error"
+    @patch("src.app.embed")
+    def test_main_no_embed_flag_skips(self, mock_embed, tmp_path):
+        """When --embed is not passed at all, embed() should not be called."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
 
+        with patch(
+            "sys.argv",
+            ["app", "--source", str(source), "--output", str(output)],
+        ):
+            main()
 
+        mock_embed.assert_not_called()
 
-def test_batch_entrypoint_item_0_1():
-    """Test batch processing from row 0 to 1 of the batch list"""
+    @patch("src.app.embed")
+    def test_main_with_embed_format(self, mock_embed, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
 
-    batch.batch('generate', source_csv='tests/files/batch_lists/batch_embed.csv', start_row=0, end_row=1, config_file=None)
+        with patch(
+            "sys.argv",
+            ["app", "--source", str(source), "--output", str(output), "--embed", "csv"],
+        ):
+            main()
 
-    assert Path('tests/output/100sec.parquet').exists()
-    assert Path('tests/output/some_subfolder/200sec.parquet').exists()
-    assert not Path('tests/output/some_subfolder/100sec_again.parquet').exists()
+        config = mock_embed.call_args[0][0]
+        assert config["embed"][0].filetype == "csv"
 
+    @patch("src.app.embed")
+    def test_main_embed_none_skips(self, mock_embed, tmp_path):
+        """--embed none disables embedding."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
 
-def test_batch_entrypoint_item_2():
-    """Test batch processing from row 2 to 2 of the batch list"""
+        with patch(
+            "sys.argv",
+            ["app", "--source", str(source), "--output", str(output), "--embed", "none"],
+        ):
+            main()
 
-    batch.batch('generate', source_csv='tests/files/batch_lists/batch_embed.csv', start_row=2, end_row=2, config_file=None)
+        mock_embed.assert_not_called()
 
-    assert not Path('tests/output/100sec.parquet').exists()
-    assert not Path('tests/output/some_subfolder/200sec.parquet').exists()
-    assert Path('tests/output/some_subfolder/100sec_again.parquet').exists()
+    @patch("src.app.embed")
+    def test_main_embed_false_skips(self, mock_embed, tmp_path):
+        """--embed false disables embedding."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
 
+        with patch(
+            "sys.argv",
+            ["app", "--source", str(source), "--output", str(output), "--embed", "false"],
+        ):
+            main()
 
-def test_embed_command_empty_config(mocker) -> None:
+        mock_embed.assert_not_called()
 
-    mocker.patch('sys.argv', ['some_file_name.py', 'generate', '--source', 'tests/files/audio', '--output', 'tests/output/', '--config_file', 'tests/files/configs/empty.yml'])  
-    mocked_embed_file_and_save = mocker.patch('src.app.embed_folder')
-    mocked_embed_file_and_save.return_value = "hi there"
-    main()
-    mocked_embed_file_and_save.assert_called_once_with(Path('tests/files/audio'), 'tests/output/', ConfigDict(**{}))
+    @patch("src.app.embed")
+    def test_main_embed_none_with_classify(self, mock_embed, tmp_path):
+        """When embed is 'none' but classify is set, embed() is not called."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        with patch(
+            "sys.argv",
+            ["app", "--source", str(source), "--output", str(output),
+             "--embed", "none", "--classify"],
+        ):
+            main()
+
+        mock_embed.assert_not_called()
+
+    def test_main_missing_source(self, tmp_path):
+        output = tmp_path / "output"
+        output.mkdir()
+
+        with patch(
+            "sys.argv",
+            ["app", "--source", "/nonexistent/path", "--output", str(output), "--embed"],
+        ):
+            with pytest.raises(FileNotFoundError, match="Source path"):
+                main()
+
+    @patch("src.app.embed")
+    def test_main_with_config_file(self, mock_embed, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            f"source: {source}\noutput: {output}\nembed: parquet-columns\n"
+        )
+
+        with patch(
+            "sys.argv",
+            ["app", "--config_file", str(config_file)],
+        ):
+            main()
+
+        config = mock_embed.call_args[0][0]
+        assert config["embed"][0].filetype == "parquet"
+        assert config["embed"][0].table_format == "columns"

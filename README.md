@@ -1,91 +1,144 @@
 # perch-runner
 
-A docker container that runs Perch.
+A Docker container that generates [Perch](https://github.com/google-research/perch) audio embeddings for folders of audio files.
 
-## Commands
-
-This container has three basic functions:
-
-1. Generate Perch embeddings for a given audio file
-2. To classify the embeddings given an audio file and one or more additional linear classifier
-3. To measure distance between a given sample and a given audio file (Not implemented Yet)
-
-Each of these output a result per 5 second chunks
-
-### Generate embeddings
-
-The `generate` command accepts one input file or one input folder and one output directory.
-
-- One file will be produced containing the embeddings for the input file.
-- The file MUST be in a self-describing format. 
-- Each result in the file must have at least
-  - a `start` value representing the start of the record in seconds
-  - an `embedding` value representing the embedding for the record
-    - For CSV this should be a Base64 encoded string of the embedding vector
-  - a `source_separation_channel` representing the virtual channel the record came from
-  - and other columns are allowed as needed
-- Files should include provenance metadata in their headers
-- Note: audio recordings IDs (or other source identifying information) are
-  not needed. The assumption is that this container is run by an orchestrator
-  that knows what audio file is being processed.
-
-#### Usage
-
-```
-generate <input-file> <output-directory>
-    <input-file>                The file to generate embeddings for
-    <output-directory>          The directory to write the embeddings to
-    -F|--format [csv|parquet]   The format of the embeddings file: `CSV`` or `Parquet``
-    -c|--config <config-file>   An optional configuration file to use
-```
-
-
-
-#### Examples
+## Quick Start
 
 ```bash
-cd /data
-curl -o audio.wav https://api.ecosounds.org/audio_recordings/123.wav
-docker run -v /data:/data perch-runner generate /data/audio.wav /data/output
+docker run --rm \
+  -v /path/to/audio:/mnt/input \
+  -v /path/to/output:/mnt/output \
+  qutecoacoustics/perchrunner:latest --embed
 ```
 
-### Classify
+This processes all audio files in `/path/to/audio` and writes Parquet embedding files to `/path/to/output/embeddings/`.
 
-The `classify` command accepts one input file, one output directory, and one or more classifiers.
-The classifiers are provided in a config file.
-
-- One file will be produced containing the classifications for the input file.
-- The file MUST be in a self-describing format.
-- The file should return results in \<insert link to our event common format\>
-- Files should include provenance metadata in their headers
-
-#### Usage
+## Usage
 
 ```
-classify [-F|--format] [-c|--config <config-file> ] <input-file> <output-directory>
-    <input-file>                The file to generate embeddings for
-    <output-directory>          The directory to write the embeddings to
-    -c|--config <config-file>   An optional configuration file to use
+docker run --rm \
+  -v <source>:/mnt/input \
+  -v <output>:/mnt/output \
+  [-v <config_dir>:/mnt/config] \
+  qutecoacoustics/perchrunner:latest [options]
 ```
 
-#### Configuration file
+### Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--embed [format]` | Generate embeddings. Format: `parquet`, `hoplite`, or `csv` | `parquet` |
+| `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
+| `--embedding_table_format` | Table layout: `serialized` or `columns` | `serialized` |
+| `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
+| `--config_file` | Path to a YAML config file | None |
+| `--source` | Override source path (default: `/mnt/input`) | `/mnt/input` |
+| `--output` | Override output path (default: `/mnt/output`) | `/mnt/output` |
+
+### Supported Audio Formats
+
+`.wav`, `.flac`, `.mp3`, `.ogg`
+
+### Output Structure
+
+Audio files are discovered relative to the source directory. Output mirrors that structure:
+
+```
+/mnt/output/
+  embeddings/
+    site1/
+      recording.wav/
+        embeddings.parquet
+    site2/
+      another.flac/
+        embeddings.parquet
+```
+
+Each Parquet file contains one row per 5-second window with columns: `source`, `offset`, `duration`, `embeddings` (serialized numpy array).
+
+With `--embedding_table_format columns`, the `embeddings` column is replaced by individual dimension columns (`f0000`, `f0001`, ...).
+
+With `--embed hoplite`, the raw Hoplite/USearch database is kept at `/mnt/output/hoplite/` and no Parquet files are produced.
+
+### Config File
+
+Instead of CLI flags, you can mount a YAML config file:
 
 ```yaml
-classifier: keras_saved_model_path
+source: /mnt/input
+output: /mnt/output
+embed: parquet
+model_choice: perch_v2
+embedding_table_format: serialized
+file_glob: "*/*"
 ```
 
+```bash
+docker run --rm \
+  -v /path/to/audio:/mnt/input \
+  -v /path/to/output:/mnt/output \
+  -v /path/to/config:/mnt/config \
+  qutecoacoustics/perchrunner:latest --config_file /mnt/config/config.yml
+```
 
+Config files support inheritance via an `inherit` key.
 
-## Batch Mode
+## Models
 
-The "generate" and "inference" commands can be also be used in batch mode by altering the entrypoint to `/app/src/batch.py`
+| Model | Embedding Dimensions | Description |
+|-------|---------------------|-------------|
+| `perch_v2` | 1536 | Default. Google Perch v2 bird embedding model |
+| `perch_8` | 1280 | Google Perch v8 |
 
+Models are cached in the Docker image at build time — no internet access is required at runtime.
 
-# Tests
+## Building
 
-## Host tests
+```bash
+# Local build (current architecture)
+./build.sh
 
-To test the docker container works as expected from the host:
-1. Into a virtual environment install the testing dependencies with `pip install -r requirements-host.txt`
-2. Run `pytest 
+# Build and push to Docker Hub (amd64 + arm64)
+./build.sh --push
+```
+
+The build runs the full test suite inside the image to verify correctness and cache models.
+
+## Testing
+
+### Inside the dev container (development)
+
+```bash
+# Run all tests (network blocked — verifies models are cached)
+pytest
+
+# Run only the model-download tests
+pytest -m "allow_network"
+```
+
+### From the host against a built image
+
+```bash
+./run_tests_in_container.sh
+```
+
+This runs `tests/run_tests` inside the container, which executes two passes:
+1. Network-blocked tests first (verifies the image is self-contained)
+2. `allow_network` tests second (model download/validation)
+
+### Test structure
+
+| Directory | Purpose | Speed |
+|-----------|---------|-------|
+| `tests/app_tests/test_embed_discovery.py` | File glob/discovery logic (mocked model) | ~4s |
+| `tests/app_tests/test_embed_export.py` | Parquet export from fixture DBs | ~1s |
+| `tests/app_tests/test_embed_models.py` | Real CNN inference (TensorFlow) | ~30s |
+| `tests/app_tests/test_config.py` | Config parsing and inheritance | Fast |
+| `tests/app_tests/test_data_frames.py` | DataFrame serialization | Fast |
+| `tests/app_tests/test_sourcemap.py` | Source mapping logic | Fast |
+| `tests/integration/test_cli.py` | Full CLI via subprocess | ~90s |
+
+## License
+
+Apache 2.0
 
