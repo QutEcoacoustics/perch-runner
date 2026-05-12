@@ -76,11 +76,13 @@ class TestSetupLogging:
 
 class TestLoggingCLI:
 
+    REPO_ROOT = Path(__file__).resolve().parents[2]
+
     def _run_app(self, *args):
         cmd = [sys.executable, '-m', 'src.app'] + list(args)
         return subprocess.run(
             cmd, capture_output=True, text=True,
-            cwd='/workspaces/perch-runner',
+            cwd=str(self.REPO_ROOT),
         )
 
     def test_hoplite_debug_shows_sql(self):
@@ -94,7 +96,7 @@ class TestLoggingCLI:
 
     def test_log_level_flag_accepted(self):
         result = self._run_app(
-            '--source', '/tmp', '--output', '/tmp',
+            'version',
             '--log_level', 'WARNING',
         )
         assert result.returncode == 0

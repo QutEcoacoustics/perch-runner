@@ -248,6 +248,10 @@ def load_config(config_path=None, args=None):
     if not config['output'].exists():
         raise FileNotFoundError(f"Output path {config['output']} does not exist.")
 
+    # Validate that at least one action is specified
+    if not config['embed'] and not config['classify']:
+        raise ValueError("At least one of --embed or --classify must be specified.")
+
     return config
   
 

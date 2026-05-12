@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs app_tests and integration tests inside the built container.
+# Runs app_tests and integration tests inside the built container. This file is called from the host. 
 # Usage: ./run_tests_in_container.sh [extra pytest args...]
 #
 # Examples:

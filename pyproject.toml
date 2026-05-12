@@ -1,5 +1,2 @@
 [tool.pytest.ini_options]
 testpaths = ["tests/app_tests", "tests/integration"]
-markers = [
-    "allow_network: bypass the network-blocking fixture (not used by default — all tests should use cached models).",
-]

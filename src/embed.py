@@ -148,15 +148,17 @@ def create_database(
     model_config_key = config['model_choice']
     if isinstance(model_config_key, set):
         model_config_key = next(iter(model_config_key))
+    log.info("Using embedding model: %s", model_config_key)
     preset_info = model_configs.get_preset_model_config(model_config_key)
 
     db_config = config_dict.ConfigDict({
         'db_path': db_path,
     })
 
-    db_config.usearch_cfg = sqlite_usearch_impl.get_default_usearch_config(
+    usearch_cfg = sqlite_usearch_impl.get_default_usearch_config(
         preset_info.embedding_dim
     )
+    db_config.usearch_cfg = usearch_cfg
 
     db_key = 'sqlite_usearch'
     db_config = db_loader.DBConfig(db_key, db_config)

@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -60,12 +61,14 @@ class TestComputeWorkers:
 class TestExitCodes:
     """Test that the app exits with appropriate codes."""
 
+    REPO_ROOT = Path(__file__).resolve().parents[2]
+
     def _run_app(self, *args):
         """Run app.py as a subprocess and return the result."""
         cmd = [sys.executable, '-m', 'src.app'] + list(args)
         return subprocess.run(
             cmd, capture_output=True, text=True,
-            cwd='/workspaces/perch-runner',
+            cwd=str(self.REPO_ROOT),
         )
 
     def test_missing_source_exits_nonzero(self):
@@ -74,10 +77,10 @@ class TestExitCodes:
         )
         assert result.returncode != 0
 
-    def test_no_action_exits_zero(self):
-        # No --embed or --classify with valid paths = nothing to do, should exit 0
+    def test_no_action_exits_nonzero(self):
+        # No --embed or --classify should fail config validation.
         result = self._run_app('--source', '/tmp', '--output', '/tmp')
-        assert result.returncode == 0
+        assert result.returncode != 0
 
     def test_invalid_model_exits_nonzero(self):
         result = self._run_app(

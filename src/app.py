@@ -12,9 +12,14 @@ import os
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '1')
 
 from src.config import load_config
-from src.embed import embed
 from src.logging_config import setup_logging
-from src.version import __version__, MODELS
+from src.version import __version__, MODELS, PERCH_HOPLITE_VERSION
+
+
+def embed(config):
+    # lazy load heavy stuff only when needed
+    from src.embed import embed as run_embed
+    return run_embed(config)
 
 
 
@@ -42,25 +47,34 @@ def main():
 
     if args.command == "version":
         print(f"perch-runner {__version__}")
+        print(f"perch-hoplite {PERCH_HOPLITE_VERSION}")
         print("Models:")
         for name, info in MODELS.items():
             print(f"  {name}: {info['kaggle']} v{info['version']} ({info['embedding_dim']}d)")
         return
 
-    config = load_config(args.config_file, args)
-    setup_logging(config)
-
     try:
+        config = load_config(args.config_file, args)
+        setup_logging(config)
+        log = logging.getLogger(__name__)
+
+        log.info("Starting perch-runner version %s", __version__)
+
         if config['embed']:
+            log.info("Embed requested using model: %s", config['model_choice'])
             embed(config)
 
         if config['classify']:
-            print("classify is not implemented yet")
+            log.info("Classify requested using model: %s", config['model_choice'])
+            log.warning("classify is not implemented yet")
     except MemoryError:
         logging.getLogger(__name__).error(
             "OUT OF MEMORY: Not enough RAM to complete embedding. "
             "Try reducing --workers or increasing container memory.")
         raise SystemExit(137)
+    except (FileNotFoundError, ValueError):
+        # Let config errors propagate as-is (will be caught by Python)
+        raise
     except Exception:
         logging.getLogger(__name__).exception("Fatal error")
         raise SystemExit(1)

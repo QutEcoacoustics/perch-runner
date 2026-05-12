@@ -27,7 +27,7 @@ docker run --rm \
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--embed [format]` | Generate embeddings. Format: `parquet`, `hoplite`, or `csv` | `parquet` |
+| `--embed [format]` | Generate embeddings. Common formats: `parquet` or `hoplite` | `parquet` |
 | `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
 | `--embedding_table_format` | Table layout: `serialized` or `columns` | `serialized` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
@@ -54,7 +54,7 @@ Audio files are discovered relative to the source directory. Output mirrors that
         embeddings.parquet
 ```
 
-Each Parquet file contains one row per 5-second window with columns: `source`, `offset`, `duration`, `embeddings` (serialized numpy array).
+Each Parquet file contains one row per 5-second window with columns: `source`, `channel`, `offset`, `embeddings` (serialized numpy array).
 
 With `--embedding_table_format columns`, the `embeddings` column is replaced by individual dimension columns (`f0000`, `f0001`, ...).
 
@@ -96,45 +96,41 @@ Models are cached in the Docker image at build time — no internet access is re
 # Local build (current architecture)
 ./build.sh
 
+# Local build with explicit tag/version (for example, dev)
+./build.sh dev
+
 # Build and push to Docker Hub (amd64 + arm64)
 ./build.sh --push
 ```
 
-The build runs the full test suite inside the image to verify correctness and cache models.
+The image build resolves/downloads models and embeds them in the image cache.
+Tests are run after build in CI and during local development.
 
 ## Testing
 
 ### Inside the dev container (development)
 
 ```bash
-# Run all tests (network blocked — verifies models are cached)
+# Run all tests (network is blocked; models must be cached)
 pytest
-
-# Run only the model-download tests
-pytest -m "allow_network"
 ```
 
 ### From the host against a built image
 
 ```bash
+# run the full suite of tests in the container from the host
 ./run_tests_in_container.sh
 ```
 
-This runs `tests/run_tests` inside the container, which executes two passes:
-1. Network-blocked tests first (verifies the image is self-contained)
-2. `allow_network` tests second (model download/validation)
+```bash
+# run integration tests only, on the host
+./run_tests.sh
+```
 
-### Test structure
+This runs host integration tests in `tests/integration`, which execute the built
+container via `docker run` and validate produced outputs.  Requires pytest to be
+installed on the host environment. 
 
-| Directory | Purpose | Speed |
-|-----------|---------|-------|
-| `tests/app_tests/test_embed_discovery.py` | File glob/discovery logic (mocked model) | ~4s |
-| `tests/app_tests/test_embed_export.py` | Parquet export from fixture DBs | ~1s |
-| `tests/app_tests/test_embed_models.py` | Real CNN inference (TensorFlow) | ~30s |
-| `tests/app_tests/test_config.py` | Config parsing and validation | Fast |
-| `tests/app_tests/test_data_frames.py` | DataFrame serialization | Fast |
-| `tests/app_tests/test_sourcemap.py` | Source mapping logic | Fast |
-| `tests/integration/test_cli.py` | Full CLI via subprocess | ~90s |
 
 ## License
 

@@ -3,7 +3,7 @@
 # pytest runs on the host; the runner fixture invokes `docker run` with
 # tmp_path mounted, then asserts on the output files.
 #
-# Prerequisites: pip install -r requirements-host.txt (just pytest)
+# Prerequisites: pip install -r requirements-host.txt
 # Requires: a built image (qutecoacoustics/perchrunner:latest)
 
 set -euo pipefail

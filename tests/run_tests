@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 # In-container test runner. Invoked as the entrypoint by run_tests_in_container.sh.
-# Two-pass strategy:
-#   1. Run tests with network blocked (verifies models are cached)
-#   2. Only after running network-blocked tests, do we run allow-network tests. 
-#.     so that if they download anything, it doesn't populate the cache and invalide the cache-tests
-# Any arguments are passed through to pytest in both passes.
+# Single-pass strategy: all tests run with network blocked.
+# Any arguments are passed through to pytest.
 
 set -euo pipefail
 
-echo "=== Pass 1: Tests with network blocked (cache verification) ==="
-python -m pytest tests/app_tests tests/integration -v -m "not allow_network" "$@"
-
-echo ""
-echo "=== Pass 2: allow_network tests (model download/validation) ==="
-python -m pytest tests/app_tests tests/integration -v -m "allow_network" "$@"
+echo "=== Running tests with network blocked ==="
+python -m pytest tests/app_tests tests/integration -v "$@"

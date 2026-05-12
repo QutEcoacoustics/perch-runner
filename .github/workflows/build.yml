@@ -25,11 +25,10 @@ jobs:
 
 
       - name: Build image
-        # run build script, get the version from the last line of output, then save it to the env var for use in subsequent steps
-        # echo "CRANE_VERSION=$(sh ./build.sh | tail -n1)" >> $GITHUB_ENV
+        # Run build script and persist the resolved VERSION for later push steps.
         run: |
           source ./build.sh
-          echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       # reading and writing to mounted directories doesn't work unless permissions are given to 'other'
       - name: permissions for running tests with mounts
@@ -58,6 +57,5 @@ jobs:
       - name: push to docker
         if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
         run: |
-          docker push qutecoacoustics/perchrunner:${{ env.PR_VERSION }}
-          docker push qutecoacoustics/perchrunner:latest
+          docker push qutecoacoustics/perchrunner:${{ env.VERSION }}
           docker push qutecoacoustics/perchrunner:latest

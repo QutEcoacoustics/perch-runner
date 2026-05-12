@@ -14,4 +14,3 @@ run_tests_in_container.sh
 requirements-host.txt
 Dockerfile
 tests/mounted
-tests/files/embeddings

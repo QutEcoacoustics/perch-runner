@@ -112,14 +112,15 @@ class TestEmbedCLI:
         parquet = output / "embeddings" / "site" / "date" / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
 
-    def test_no_embed_flag_produces_nothing(self, runner, workspace):
-        """Without --embed, no output is produced."""
+    def test_no_embed_flag_errors(self, runner, workspace):
+        """Without --embed/--classify, CLI should fail validation."""
         source, output, _ = workspace
         site = source / "site"
         site.mkdir()
         shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
 
-        runner(source, output)
+        with pytest.raises(RuntimeError, match="At least one of --embed or --classify"):
+            runner(source, output)
 
         assert not (output / "embeddings").exists()
         assert not (output / "hoplite").exists()
@@ -137,15 +138,15 @@ class TestEmbedCLI:
         assert not (output / "embeddings").exists()
 
 
-# Import the model list from app_tests so there's a single source of truth
-from tests.app_tests.embed_helpers import MODELS_TO_CACHE, MODEL_IDS
+# Import model metadata from source of truth
+from src.version import MODELS
 
 
 class TestEmbedCLIModels:
     """Integration tests parametrized over all cached models."""
 
-    @pytest.mark.parametrize("model_choice,expected_dim", MODELS_TO_CACHE, ids=MODEL_IDS)
-    def test_embed_model(self, runner, workspace, model_choice, expected_dim):
+    @pytest.mark.parametrize("model_choice", MODELS.keys(), ids=MODELS.keys())
+    def test_embed_model(self, runner, workspace, model_choice):
         """Embed with each model, verify parquet output."""
         source, output, _ = workspace
         site = source / "site"

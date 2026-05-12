@@ -30,7 +30,9 @@ def make_config(tmp_path):
         source.mkdir(exist_ok=True)
         output = tmp_path / "output"
         output.mkdir(exist_ok=True)
-        data = {"source": str(source), "output": str(output)}
+        # Include a default action so tests unrelated to action validation
+        # can focus on their specific config normalization behavior.
+        data = {"source": str(source), "output": str(output), "embed": True}
         if extra:
             data.update(extra)
         config_file = tmp_path / f"config.{format}"

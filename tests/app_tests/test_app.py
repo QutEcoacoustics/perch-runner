@@ -115,8 +115,8 @@ class TestCLIArgsToConfig:
         assert config["embed"][0].filetype == "parquet"
         assert config["embed"][0].table_format == "serialized"
 
-    def test_no_flags_produces_empty_embed_and_classify(self, tmp_path):
-        """No --embed or --classify flags: both are empty."""
+    def test_no_flags_produces_error(self, tmp_path):
+        """No --embed or --classify flags: load_config should raise ValueError."""
         source = tmp_path / "input"
         source.mkdir()
         output = tmp_path / "output"
@@ -127,9 +127,8 @@ class TestCLIArgsToConfig:
             source=str(source), output=str(output),
             model_choice=None, embedding_table_format=None,
         )
-        config = load_config(config_path=None, args=args)
-        assert config["embed"] == []
-        assert config["classify"] == set()
+        with pytest.raises(ValueError, match="At least one of"):
+            load_config(config_path=None, args=args)
 
 
 # ---------------------------------------------------------------------------
@@ -160,35 +159,36 @@ class TestMainDispatch:
         output = tmp_path / "output"
         output.mkdir()
 
+        # No --embed or --classify should error during config validation
         with patch("sys.argv", ["app", "--source", str(source), "--output", str(output)]):
-            main()
-
+            with pytest.raises(ValueError, match="At least one of"):
+                main()
         mock_embed.assert_not_called()
 
     @patch("src.app.embed")
     def test_embed_none_disables(self, mock_embed, tmp_path):
-        """--embed none disables embedding."""
+        """--embed none disables embedding. Without --classify, config validation should error."""
         source = tmp_path / "input"
         source.mkdir()
         output = tmp_path / "output"
         output.mkdir()
 
         with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed", "none"]):
-            main()
-
+            with pytest.raises(ValueError, match="At least one of"):
+                main()
         mock_embed.assert_not_called()
 
     @patch("src.app.embed")
     def test_embed_false_disables(self, mock_embed, tmp_path):
-        """--embed false disables embedding."""
+        """--embed false disables embedding. Without --classify, config validation should error."""
         source = tmp_path / "input"
         source.mkdir()
         output = tmp_path / "output"
         output.mkdir()
 
         with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed", "false"]):
-            main()
-
+            with pytest.raises(ValueError, match="At least one of"):
+                main()
         mock_embed.assert_not_called()
 
     @patch("src.app.embed")
@@ -217,6 +217,18 @@ class TestMainDispatch:
 
 class TestExitCodes:
     """Test that errors produce correct exit codes."""
+
+    def test_no_embed_or_classify_exits_1(self, tmp_path):
+        """Config validation should error when neither --embed nor --classify is specified."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        # No --embed or --classify flag
+        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output)]):
+            with pytest.raises(ValueError, match="At least one of"):
+                main()
 
     @patch("src.app.embed", side_effect=MemoryError("OOM"))
     def test_memory_error_exits_137(self, mock_embed, tmp_path):
@@ -278,6 +290,7 @@ class TestVersionCommand:
             main()
         output = capsys.readouterr().out
         assert "perch-runner dev" in output
+        assert "perch-hoplite" in output
         assert "perch_8" in output
         assert "perch_v2" in output
 

@@ -12,15 +12,12 @@ _original_connect = socket.socket.connect
 
 @pytest.fixture(autouse=True)
 def _block_network(request):
-    """Block all network access unless the test is marked with @pytest.mark.allow_network."""
-    if "allow_network" in request.keywords:
-        yield
-        return
+    """Block all network access for all tests."""
 
     def _blocked(*args, **kwargs):
         raise ConnectionError(
             "Network access blocked in tests. "
-            "Models must be pre-cached. Mark with @pytest.mark.allow_network to allow downloads."
+            "Models must be pre-cached."
         )
 
     socket.socket.connect = _blocked
