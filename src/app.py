@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--embed", nargs='?', const=True, default=None,
                         help="embedding output format(s), e.g. parquet, csv, parquet-columns. Use --embed with no value for default (parquet).")
     parser.add_argument("--classify", nargs='?', const=True, default=None,
-                        help="classification output format(s), e.g. parquet, csv. Use --classify with no value for default (parquet).")
+                        help="classification output format(s), e.g. parquet, csv. Use --classify with no value for default (csv).")
     parser.add_argument("--source", default=None, help="path to the source audio folder")
     parser.add_argument("--output", default=None, help="path to the output folder")
     parser.add_argument("--config_file", default=None, help="path to the config file")
