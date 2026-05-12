@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from src import embed
+from src.config import default_config
 from perch_hoplite.db import sqlite_usearch_impl
 
 from .embed_helpers import FIXTURES_DIR, A2O_FLAC
@@ -84,7 +85,7 @@ def test_create_db_flat_source(workspace):
     source, output = workspace
     shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", source)
 
-    config = {"source": str(source), "output": str(output), "model_choice": "perch_v2", "dataset_name": "search_set"}
+    config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
     embed.create_database(config)
 
     db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
@@ -103,7 +104,7 @@ def test_auto_glob_top_level_misses_nested(workspace):
     subdir.mkdir()
     shutil.copy(FIXTURES_DIR / "audio" / "segment.flac", subdir)
 
-    config = {"source": str(source), "output": str(output), "model_choice": "perch_v2", "dataset_name": "search_set"}
+    config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
     embed.create_database(config)
 
     db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
@@ -120,7 +121,7 @@ def test_auto_glob_second_level(workspace):
     subdir.mkdir()
     shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", subdir)
 
-    config = {"source": str(source), "output": str(output), "model_choice": "perch_v2", "dataset_name": "search_set"}
+    config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
     embed.create_database(config)
 
     db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
@@ -140,7 +141,7 @@ def test_a2o_flac_nested(workspace):
     site_dir.mkdir()
     shutil.copy(FIXTURES_DIR / "audio" / A2O_FLAC, site_dir)
 
-    config = {"source": str(source), "output": str(output), "model_choice": "perch_v2", "dataset_name": "search_set"}
+    config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
     embed.create_database(config)
 
     db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
@@ -157,7 +158,7 @@ def test_a2o_flac_flat(workspace):
     source, output = workspace
     shutil.copy(FIXTURES_DIR / "audio" / A2O_FLAC, source)
 
-    config = {"source": str(source), "output": str(output), "model_choice": "perch_v2", "dataset_name": "search_set"}
+    config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
     embed.create_database(config)
 
     db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))

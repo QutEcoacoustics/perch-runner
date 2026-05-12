@@ -81,8 +81,6 @@ docker run --rm \
   qutecoacoustics/perchrunner:latest --config_file /mnt/config/config.yml
 ```
 
-Config files support inheritance via an `inherit` key.
-
 ## Models
 
 | Model | Embedding Dimensions | Description |
@@ -133,7 +131,7 @@ This runs `tests/run_tests` inside the container, which executes two passes:
 | `tests/app_tests/test_embed_discovery.py` | File glob/discovery logic (mocked model) | ~4s |
 | `tests/app_tests/test_embed_export.py` | Parquet export from fixture DBs | ~1s |
 | `tests/app_tests/test_embed_models.py` | Real CNN inference (TensorFlow) | ~30s |
-| `tests/app_tests/test_config.py` | Config parsing and inheritance | Fast |
+| `tests/app_tests/test_config.py` | Config parsing and validation | Fast |
 | `tests/app_tests/test_data_frames.py` | DataFrame serialization | Fast |
 | `tests/app_tests/test_sourcemap.py` | Source mapping logic | Fast |
 | `tests/integration/test_cli.py` | Full CLI via subprocess | ~90s |

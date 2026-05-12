@@ -9,23 +9,32 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 RUN uv pip install 'perch-hoplite[tf]' pytest
 
-# --- Test Stage: runs tests and downloads models into kagglehub cache ---
+# --- Models Stage: resolve presets, generate models.json, download models ---
+FROM base AS models
+WORKDIR /app
+COPY src/__init__.py src/__init__.py
+COPY src/download_models.py src/download_models.py
+RUN python -m src.download_models
+
+# --- Test Stage: runs tests using cached models ---
 FROM base AS test
 ARG DEV=false
 WORKDIR /app
+COPY --from=models /root/.cache/kagglehub /root/.cache/kagglehub
 COPY . .
-# Ensure the cache directory exists so COPY in final stage always succeeds
-RUN mkdir -p /root/.cache/kagglehub
-# Only run allow_network tests in non-dev mode — these download and cache models.
+# Run model tests during build to verify cached models work.
 # Full test suite is run post-build via run_tests_in_container.sh or CI.
 RUN if [ "$DEV" != "true" ]; then \
     touch /.dockerenv && \
-    python -m pytest tests/app_tests tests/integration -v -m "allow_network"; \
+    python -m pytest tests/app_tests/test_embed_models.py -v; \
     fi
 
 # --- Final Stage ---
 FROM base AS final
 WORKDIR /app
+COPY --from=models /root/.cache/kagglehub /root/.cache/kagglehub
 COPY . .
-COPY --from=test /root/.cache/kagglehub /root/.cache/kagglehub
+COPY --from=models /app/src/models.json src/models.json
+ARG VERSION=dev
+ENV APP_VERSION=${VERSION}
 ENTRYPOINT ["python", "-m", "src.app"]

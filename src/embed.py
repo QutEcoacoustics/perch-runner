@@ -1,21 +1,70 @@
+import logging
+import time
+
 from perch_hoplite.agile import source_info
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import soundfile as sf
 from perch_hoplite.agile import embed as agile_embed
 from ml_collections import config_dict
 from perch_hoplite.db import db_loader
 from perch_hoplite.zoo import model_configs
 from perch_hoplite.db import sqlite_usearch_impl
 from src import data_frames
+from src.resources import compute_workers, log_ram
+
+log = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {'.wav', '.flac', '.mp3', '.ogg'}
 
 
+def _scan_audio_files(source: Path, file_glob: str) -> float:
+    """Scan audio files matching the glob and report stats.
+
+    Returns total duration in seconds.
+    """
+    files = sorted(source.glob(file_glob))
+    audio_files = [f for f in files if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS]
+
+    if not audio_files:
+        log.warning("No audio files found matching glob '%s' under %s", file_glob, source)
+        return 0.0
+
+    durations = []
+    for f in audio_files:
+        try:
+            info = sf.info(str(f))
+            durations.append(info.duration)
+        except Exception as exc:
+            log.warning("Could not read %s: %s", f.name, exc)
+            durations.append(0.0)
+
+    total = sum(durations)
+    avg = total / len(durations) if durations else 0.0
+
+    log.info("Audio files found: %d", len(audio_files))
+    for f, dur in zip(audio_files, durations):
+        log.info("  %s  (%.1fs)", f.name, dur)
+    log.info("Total duration: %.1fs (%.1f min)", total, total / 60)
+    log.info("Average duration: %.1fs", avg)
+
+    return total
+
+
 
 def embed(config: dict):
+    t_start = time.monotonic()
 
-    create_database(config)
+    log.info("Starting embedding: source=%s, output=%s, model=%s",
+             config['source'], config['output'], config['model_choice'])
+    log_ram()
+
+    try:
+        audio_duration_s = create_database(config)
+    except Exception:
+        log.exception("ERROR: Embedding failed")
+        raise
 
     embed_formats = config['embed']  # list of EmbeddingsFormat
 
@@ -25,6 +74,7 @@ def embed(config: dict):
     as_columns = any(ef.table_format == 'columns' for ef in parquet_formats)
 
     if parquet_formats:
+        log.info("Exporting embeddings to parquet...")
         export_as_parquet(
             db_path=Path(config['output']) / 'hoplite',
             output_path=Path(config['output']) / 'embeddings',
@@ -37,6 +87,16 @@ def embed(config: dict):
     if not keep_hoplite:
         import shutil
         shutil.rmtree(Path(config['output']) / 'hoplite', ignore_errors=True)
+
+    elapsed = time.monotonic() - t_start
+    log_ram()
+    if audio_duration_s > 0:
+        audio_hours = audio_duration_s / 3600
+        time_per_hour = elapsed / audio_hours
+        log.info("Done. Total time: %.1fs (%.1f min) — %.1fs per hour of audio",
+                 elapsed, elapsed / 60, time_per_hour)
+    else:
+        log.info("Done. Total time: %.1fs (%.1f min)", elapsed, elapsed / 60)
      
 
 
@@ -77,6 +137,14 @@ def create_database(
     # Use configured glob pattern, or auto-detect from file depth.
     file_glob = config.get('file_glob') or _detect_glob_pattern(source)
 
+    # Log audio stats and compute workers BEFORE touching the DB,
+    # so this info is visible before any perch_hoplite output.
+    log.info("Audio source: base_path=%s, file_glob=%s, shard_len_s=%s",
+             source, file_glob, shard_length_in_seconds if use_file_sharding else None)
+    total_duration = _scan_audio_files(source, file_glob)
+    num_workers = compute_workers(config.get('workers', 'auto'))
+    log_ram()
+
     model_config_key = config['model_choice']
     if isinstance(model_config_key, set):
         model_config_key = next(iter(model_config_key))
@@ -98,6 +166,7 @@ def create_database(
         model_config=preset_info.model_config,
     )
 
+    # SQL trace noise is filtered by _SqlFilter in app.py
     db = db_config.load_db()
 
     audio_glob = source_info.AudioSourceConfig(
@@ -108,15 +177,32 @@ def create_database(
         target_sample_rate_hz=-2,
         shard_len_s=float(shard_length_in_seconds) if use_file_sharding else None,
     )
+
     audio_sources = source_info.AudioSources((audio_glob,))
+
     worker = agile_embed.EmbedWorker(
         audio_sources=audio_sources,
         db=db,
         model_config=model_config,
+        audio_worker_threads=num_workers,
     )
-    worker.process_all(target_dataset_name=dataset_name)
 
-    return True
+    t0 = time.monotonic()
+    log.info("Starting model inference...")
+    worker.process_all(target_dataset_name=dataset_name)
+    elapsed = time.monotonic() - t0
+    log.info("Model inference finished in %.1fs", elapsed)
+    log_ram()
+
+    windows = db.get_all_windows()
+    count = len(windows)
+    if count == 0:
+        log.warning("WARNING: 0 embeddings were produced! "
+                    "Check that audio files match glob '%s' under %s "
+                    "and are longer than 1 second.", file_glob, source)
+    else:
+        log.info("Created %d embeddings in %s", count, db_path)
+    return total_duration
 
 
 def export_as_parquet(
@@ -156,9 +242,11 @@ def export_as_parquet(
     # Gather all windows and their embeddings.
     windows = db.get_all_windows()
     if not windows:
+        log.warning("No embeddings found in database — nothing to export.")
         return
 
     window_ids = [w.id for w in windows]
+    log.info("Reading %d embeddings from database...", len(window_ids))
 
     # usearch ≥2.25 returns a tuple of arrays from batch get() instead of a
     # 2-D ndarray, which makes perch_hoplite's get_embeddings_batch() crash.
@@ -172,9 +260,10 @@ def export_as_parquet(
         offset = window.offsets[0]
         data_by_source.setdefault(source, []).append((offset, embedding))
 
+    log.info("Exporting %d source(s) to parquet...", len(data_by_source))
     both = as_serialized and as_columns
 
-    for source, entries in data_by_source.items():
+    for i, (source, entries) in enumerate(data_by_source.items(), 1):
         entries.sort(key=lambda x: x[0])  # sort by offset
         rel_path = sourcemap(source)
 
@@ -191,13 +280,15 @@ def export_as_parquet(
             dest = dest_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(dest, index=False)
+            log.info("  [%d/%d] Wrote %s (%d rows, columns format)",
+                     i, len(data_by_source), dest, len(rows))
 
         if as_serialized:
             dest_dir = (output_path / 'serialized') if both else output_path
             rows = []
             for offset, embedding in entries:
-                emb_array = np.asarray(embedding, dtype=np.float32)
-                encoded = data_frames.serialize_array(emb_array)
+                emb_array = np.asarray(embedding)
+                encoded = data_frames.serialize_array(emb_array, dtype=emb_array.dtype)
                 rows.append({
                     'source': source,
                     'channel': 0,
@@ -208,4 +299,6 @@ def export_as_parquet(
             dest = dest_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(dest, index=False)
+            log.info("  [%d/%d] Wrote %s (%d rows, serialized format)",
+                     i, len(data_by_source), dest, len(rows))
 

@@ -1,20 +1,17 @@
-"""
-Parsing config files. 
-def load_config(yml_source):
-Only one config file can be specified to the public function load_config.
-This config file can inherit from other config files, if they have the key 'inherit' with the value of the path to that parent config
-"""
+"""Parsing config files."""
 
 import yaml
 from pathlib import Path
 from dataclasses import dataclass
 from typing import ClassVar
 
+from src.version import MODELS
+
 default_config_dir = "/mnt/config/"
 
 
 valid_values = {
-    "model_choice": ["perch_v2", "perch_8"],
+    "model_choice": list(MODELS.keys()),
     "embed": ["parquet","csv","hoplite"],
     "classify": ["parquet", "csv", "hoplite"],
     "embedding_table_format": ["serialized", "columns"]
@@ -34,6 +31,11 @@ default_config = {
     "embedding_table_format": "serialized",
     "file_glob": None,
     "dataset_name": "search_set",
+    "workers": "auto",
+    "log_level": "INFO",
+    "hoplite_log_level": "WARNING",
+    "tf_log_level": "WARNING",
+    "log_file": None,
 }
 
 
@@ -174,7 +176,7 @@ def load_config(config_path=None, args=None):
         print("No config file found. Using default configuration.")
         config = {}
 
-    # merge with default config, giving precedence to the loaded config
+    # apply default config, giving precedence to the loaded config
     config = {**default_config, **config}
 
     # merge with command line args, giving precedence to command line args
@@ -215,6 +217,27 @@ def load_config(config_path=None, args=None):
     # Normalize file_glob: falsy strings → None (triggers auto-detection)
     glob_val = normalize_bool_string(config.get('file_glob'))
     config['file_glob'] = None if glob_val is False else glob_val
+
+    # Normalize workers: 'auto' stays as string, numbers get converted
+    workers_val = config.get('workers', 'auto')
+    if isinstance(workers_val, str) and workers_val.strip().lower() == 'auto':
+        config['workers'] = 'auto'
+    else:
+        try:
+            config['workers'] = int(workers_val)
+        except (ValueError, TypeError):
+            config['workers'] = 'auto'
+
+    # Normalize log levels: uppercase string
+    for key in ('log_level', 'hoplite_log_level', 'tf_log_level'):
+        val = config.get(key)
+        if val is not None:
+            config[key] = str(val).upper()
+
+    # Normalize log_file: falsy → None
+    log_file = config.get('log_file')
+    if not log_file or (isinstance(log_file, str) and log_file.strip().lower() in ('none', 'false', '')):
+        config['log_file'] = None
 
     # ensure source and output are Path objects and exist
     config['source'] = Path(config['source'])
