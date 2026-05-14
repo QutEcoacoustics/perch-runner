@@ -8,7 +8,7 @@ Controls three independent log channels:
    Controlled via the ``TF_CPP_MIN_LOG_LEVEL`` environment variable.
 
 Each channel can be set to a standard Python log level
-(DEBUG, INFO, WARNING, ERROR) via CLI flags or config file keys.
+(DEBUG, INFO, WARNING, ERROR, CRITICAL) via CLI flags or config file keys.
 
 An optional ``--log_file`` sends **all** output (both channels) to a file
 in addition to the console.
@@ -17,7 +17,7 @@ in addition to the console.
 import logging
 import os
 
-VALID_LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR')
+VALID_LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 LOG_DATEFMT = "%H:%M:%S"
@@ -28,6 +28,7 @@ _TF_LEVEL_MAP = {
     'INFO': '0',
     'WARNING': '1',
     'ERROR': '2',
+    'CRITICAL': '3',
 }
 
 
@@ -79,8 +80,7 @@ def _resolve_level(value) -> int:
     if isinstance(value, int):
         return value
     name = str(value).upper()
-    numeric = getattr(logging, name, None)
-    if numeric is None:
+    if name not in VALID_LEVELS:
         raise ValueError(
             f"Invalid log level: {value!r}. Choose from {VALID_LEVELS}")
-    return numeric
+    return getattr(logging, name)

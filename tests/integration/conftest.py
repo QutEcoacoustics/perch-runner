@@ -71,7 +71,9 @@ def _subprocess_runner():
 
 
 def _docker_runner():
-    """Runner that invokes the app inside a Docker container."""
+    """Runner that invokes the app inside a Docker container.
+    Network is guaranteed blocked at the Docker level (--network=none).
+    """
     image = os.environ.get("IMAGE", "qutecoacoustics/perchrunner:latest")
 
     def _run(source, output, *extra_args, config_file=None):
@@ -89,7 +91,7 @@ def _docker_runner():
 
         cmd_args += list(extra_args)
 
-        command = ["docker", "run", "--rm"] + mounts + [image] + cmd_args
+        command = ["docker", "run", "--rm", "--network=none"] + mounts + [image] + cmd_args
         result = subprocess.run(
             command,
             capture_output=True,

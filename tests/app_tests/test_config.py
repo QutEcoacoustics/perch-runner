@@ -112,32 +112,32 @@ class TestEmbeddingsFormat:
 class TestParseListValues:
 
     def test_single_string(self):
-        assert parse_list_values("parquet") == {"parquet"}
+        assert parse_list_values("parquet") == ["parquet"]
 
     def test_comma_separated(self):
-        assert parse_list_values("parquet,csv") == {"parquet", "csv"}
+        assert parse_list_values("parquet,csv") == ["csv", "parquet"]
 
     def test_comma_with_spaces(self):
-        assert parse_list_values("parquet , csv") == {"parquet", "csv"}
+        assert parse_list_values("parquet , csv") == ["csv", "parquet"]
 
     def test_uppercased(self):
-        assert parse_list_values("Parquet,CSV") == {"parquet", "csv"}
+        assert parse_list_values("Parquet,CSV") == ["csv", "parquet"]
 
     def test_list_input(self):
-        assert parse_list_values(["parquet", "csv"]) == {"parquet", "csv"}
+        assert parse_list_values(["parquet", "csv"]) == ["csv", "parquet"]
 
     def test_tuple_input(self):
-        assert parse_list_values(("parquet",)) == {"parquet"}
+        assert parse_list_values(("parquet",)) == ["parquet"]
 
     def test_set_input(self):
-        assert parse_list_values({"parquet", "csv"}) == {"parquet", "csv"}
+        assert parse_list_values({"parquet", "csv"}) == ["csv", "parquet"]
 
     def test_invalid_type(self):
         with pytest.raises(ValueError, match="Invalid type"):
             parse_list_values(123)
 
     def test_deduplicates(self):
-        assert parse_list_values("parquet,parquet") == {"parquet"}
+        assert parse_list_values("parquet,parquet") == ["parquet"]
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ class TestValidateValue:
     def test_valid_model_choice(self):
         config = {"model_choice": "perch_v2"}
         result = validate_value(config, "model_choice")
-        assert result == {"perch_v2"}
+        assert result == ["perch_v2"]
 
     def test_invalid_model_choice(self):
         config = {"model_choice": "gpt4"}
@@ -240,7 +240,7 @@ class TestValidateValue:
     def test_classify_comma_separated(self):
         config = {"classify": "parquet,csv"}
         result = validate_value(config, "classify")
-        assert result == {"parquet", "csv"}
+        assert result == ["csv", "parquet"]
 
     def test_classify_invalid(self):
         config = {"classify": "excel"}
@@ -250,7 +250,7 @@ class TestValidateValue:
     def test_embedding_table_format_both(self):
         config = {"embedding_table_format": "serialized,columns"}
         result = validate_value(config, "embedding_table_format")
-        assert result == {"serialized", "columns"}
+        assert result == ["columns", "serialized"]
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +411,7 @@ class TestConfigEdgeCases:
             file_glob=None,
         )
         config = load_config(config_path=str(config_file), args=args)
-        assert config["model_choice"] == {"perch_v2"}
+        assert config["model_choice"] == ["perch_v2"]
 
     def test_yaml_only_comments(self, tmp_path):
         """A YAML file with only comments should use defaults."""
@@ -433,7 +433,7 @@ class TestConfigEdgeCases:
             file_glob=None,
         )
         config = load_config(config_path=str(config_file), args=args)
-        assert config["model_choice"] == {"perch_v2"}
+        assert config["model_choice"] == ["perch_v2"]
 
     def test_malformed_yaml(self, tmp_path):
         """Malformed YAML should raise an error."""
@@ -603,7 +603,7 @@ class TestClassifyNormalization:
         assert "csv" in config["classify"]
 
     def test_classify_parquet_validates(self, make_config):
-        """classify: parquet validates and returns set."""
+        """classify: parquet validates and returns list."""
         path = make_config({"classify": "parquet"})
         config = load_config(config_path=path)
         assert "parquet" in config["classify"]
@@ -616,12 +616,12 @@ class TestClassifyNormalization:
 class TestParseListEdgeCases:
 
     def test_empty_and_whitespace(self):
-        """Empty string returns {''}, whitespace-only returns {''}."""
+        """Empty string returns [''], whitespace-only returns ['']."""
         result = parse_list_values("")
-        assert result == {""}
+        assert result == [""]
 
         result = parse_list_values("   ")
-        assert result == {""}
+        assert result == [""]
 
 
 # ---------------------------------------------------------------------------

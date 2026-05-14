@@ -24,11 +24,12 @@ jobs:
           install: true
 
 
-      - name: Build image
-        # Run build script and persist the resolved VERSION for later push steps.
+      - name: Build image for tests
+        # Build host-platform image and persist VERSION for later push step.
         run: |
-          source ./build.sh
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          VERSION="$(date '+%Y%m%d%H%M%S')_$(git rev-parse --short HEAD)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          ./build.sh "$VERSION"
 
       # reading and writing to mounted directories doesn't work unless permissions are given to 'other'
       - name: permissions for running tests with mounts
@@ -54,8 +55,6 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: push to docker
+      - name: Build and push multi-arch image
         if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
-        run: |
-          docker push qutecoacoustics/perchrunner:${{ env.VERSION }}
-          docker push qutecoacoustics/perchrunner:latest
+        run: ./build.sh "${{ env.VERSION }}" --push

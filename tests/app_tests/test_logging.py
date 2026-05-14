@@ -18,6 +18,7 @@ class TestResolveLevel:
         assert _resolve_level('INFO') == logging.INFO
         assert _resolve_level('WARNING') == logging.WARNING
         assert _resolve_level('ERROR') == logging.ERROR
+        assert _resolve_level('CRITICAL') == logging.CRITICAL
 
     def test_case_insensitive(self):
         assert _resolve_level('info') == logging.INFO

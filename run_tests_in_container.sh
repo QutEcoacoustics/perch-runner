@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs app_tests and integration tests inside the built container. This file is called from the host. 
+# Runs app_tests and integration tests inside the built container. This file is called from the host.
+# Network is guaranteed blocked at the Docker level (--network=none).
 # Usage: ./run_tests_in_container.sh [extra pytest args...]
 #
 # Examples:
@@ -11,7 +12,7 @@ set -euo pipefail
 
 IMAGE="${IMAGE:-qutecoacoustics/perchrunner:latest}"
 
-exec docker run --rm \
+exec docker run --rm --network=none \
   --entrypoint /app/tests/run_tests \
   "$IMAGE" \
   "$@"

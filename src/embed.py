@@ -101,24 +101,40 @@ def embed(config: dict):
 
 
 def _detect_glob_pattern(source: Path) -> str:
-    """Auto-detect the glob pattern by finding the depth of the first audio file.
+    """Auto-detect a glob pattern from the shallowest discovered audio file.
 
-    Walks the source tree looking for audio files. Returns a glob pattern
-    matching the depth of the first one found:
+    Walks the source tree and finds all audio files. Returns a glob pattern
+    matching the shallowest depth found:
     - Top-level file → '*'
     - One level deep  → '*/*'
     - Two levels deep → '*/*/*'
     etc.
-    """
-    for audio_file in source.rglob('*'):
-        if not audio_file.is_file():
-            continue
-        if audio_file.suffix.lower() in AUDIO_EXTENSIONS:
-            rel = audio_file.relative_to(source)
-            depth = len(rel.parts)
-            return '/'.join(['*'] * depth)
 
-    raise FileNotFoundError(f"No audio files found in {source}")
+    If deeper audio files exist, a warning is logged because auto-detection
+    will only include files at the shallowest depth.
+    """
+    depths = []
+    for audio_file in source.rglob('*'):
+        if audio_file.is_file() and audio_file.suffix.lower() in AUDIO_EXTENSIONS:
+            rel = audio_file.relative_to(source)
+            depths.append(len(rel.parts))
+
+    if not depths:
+        raise FileNotFoundError(f"No audio files found in {source}")
+
+    shallowest_depth = min(depths)
+    skipped = sum(1 for depth in depths if depth > shallowest_depth)
+    pattern = '/'.join(['*'] * shallowest_depth)
+
+    if skipped > 0:
+        log.warning(
+            "Auto-detected file_glob '%s' from shallowest audio depth; %d deeper audio file(s) will be skipped. "
+            "Set --file_glob explicitly to include nested files.",
+            pattern,
+            skipped,
+        )
+
+    return pattern
 
 
 def create_database(
@@ -146,8 +162,9 @@ def create_database(
     log_ram()
 
     model_config_key = config['model_choice']
-    if isinstance(model_config_key, set):
-        model_config_key = next(iter(model_config_key))
+    # extract single model from list (deterministic due to sorted order)
+    if isinstance(model_config_key, list):
+        model_config_key = model_config_key[0]
     log.info("Using embedding model: %s", model_config_key)
     preset_info = model_configs.get_preset_model_config(model_config_key)
 

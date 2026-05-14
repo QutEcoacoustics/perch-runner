@@ -84,7 +84,7 @@ class TestCLIArgsToConfig:
         assert "parquet" in config["classify"]
 
         # Model
-        assert config["model_choice"] == {"perch_8"}
+        assert config["model_choice"] == ["perch_8"]
 
         # File glob
         assert config["file_glob"] == "*/*"

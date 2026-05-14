@@ -8,7 +8,7 @@ RUN apt update && apt install -y libsndfile1 ffmpeg
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 ARG PERCH_HOPLITE_VERSION=1.0.1
-RUN uv pip install "perch-hoplite[tf]==${PERCH_HOPLITE_VERSION}" pytest
+RUN uv pip install "perch-hoplite[tf]==${PERCH_HOPLITE_VERSION}" pytest pyarrow
 
 # --- Models Stage: resolve presets, generate models.json, download models ---
 FROM base AS models

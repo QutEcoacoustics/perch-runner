@@ -123,12 +123,13 @@ def parse_list_values(values):
 
     # if it's a string
     if isinstance(values, str):
-        values = set([fmt.strip().lower() for fmt in values.split(",")])
+        values = [fmt.strip().lower() for fmt in values.split(",")]
 
     if not isinstance(values, (list, tuple, set)):
         raise ValueError(f"Invalid type: {type(values)}. Must be a string or a list.")
 
-    values = set([fmt.strip().lower() for fmt in list(values)])
+    # deduplicate via set, then sort for deterministic ordering
+    values = sorted(set([fmt.strip().lower() for fmt in list(values)]))
     return values
 
 
@@ -136,7 +137,7 @@ def validate_value(config, key):
     """
     Validates that values in the config for a given key are in the allow-list of valid values.
     Allows multiple values to be specified as a comma-separated string, which will be split and stripped before validation.
-    Normalizes values into a set of lowercase strings for easier downstream processing.
+    Normalizes values into a sorted list of unique lowercase strings for deterministic downstream processing.
     """
 
     values = config[key]

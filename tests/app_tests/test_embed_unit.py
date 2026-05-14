@@ -164,6 +164,26 @@ class TestDetectGlobPattern:
         (tmp_path / "sub" / "audio.ogg").touch()
         assert embed._detect_glob_pattern(tmp_path) == "*/*"
 
+    def test_mixed_depth_uses_shallowest(self, tmp_path):
+        """When depths are mixed, auto-detection chooses the shallowest depth."""
+        (tmp_path / "top.wav").touch()
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "nested.wav").touch()
+
+        assert embed._detect_glob_pattern(tmp_path) == "*"
+
+    def test_warns_when_deeper_files_will_be_skipped(self, tmp_path, caplog):
+        """Logs a warning that counts deeper files excluded by auto-detected glob."""
+        (tmp_path / "top.wav").touch()
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "a.wav").touch()
+        (tmp_path / "sub" / "b.flac").touch()
+
+        pattern = embed._detect_glob_pattern(tmp_path)
+
+        assert pattern == "*"
+        assert any("2 deeper audio file(s) will be skipped" in r.message for r in caplog.records)
+
 
 # ---------------------------------------------------------------------------
 # embed() — hoplite directory cleanup
@@ -358,9 +378,9 @@ class TestCreateDatabase:
 
         assert any("0 embeddings" in r.message for r in caplog.records)
 
-    def test_model_choice_as_set(self, tmp_path):
-        """model_choice as a set extracts the first element."""
-        config = self._base_config(tmp_path, model_choice={"perch_v2"})
+    def test_model_choice_as_list(self, tmp_path):
+        """model_choice as a list extracts the first element."""
+        config = self._base_config(tmp_path, model_choice=["perch_v2"])
 
         # Should not raise
         embed.create_database(config)

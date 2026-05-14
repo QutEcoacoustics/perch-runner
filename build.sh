@@ -2,7 +2,6 @@
 
 # Default settings
 PUSH=false
-PLATFORMS="linux/arm64"
 ACTION="--load"
 NO_CACHE=""
 VERSION=""
@@ -27,10 +26,14 @@ tag=qutecoacoustics/perchrunner
 
 echo "Mode: $( [ "$PUSH" = true ] && echo 'RELEASE' || echo 'BUILD' )"
 echo "Version: $VERSION"
-echo "Platforms: $PLATFORMS"
+if [ "$PUSH" = true ]; then
+  echo "Platforms: $PLATFORMS"
+else
+  echo "Platforms: host default"
+fi
 
 docker buildx build \
-  --platform "$PLATFORMS" \
+  ${PLATFORMS:+--platform "$PLATFORMS"} \
   -t $tag:$VERSION \
   -t $tag:latest \
   $ACTION \

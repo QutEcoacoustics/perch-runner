@@ -39,9 +39,9 @@ def main():
     parser.add_argument("--embedding_table_format", default=None, help="table format for embeddings, e.g. serialized, columns")
     parser.add_argument("--file_glob", default=None, help="glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified.")
     parser.add_argument("--workers", default=None, help="number of worker threads for embedding, or 'auto' (default) to choose based on available RAM.")
-    parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR (default: INFO)")
-    parser.add_argument("--hoplite_log_level", default=None, help="log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR (default: WARNING)")
-    parser.add_argument("--tf_log_level", default=None, help="log level for TensorFlow C++ output: DEBUG, INFO, WARNING, ERROR (default: WARNING)")
+    parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)")
+    parser.add_argument("--hoplite_log_level", default=None, help="log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
+    parser.add_argument("--tf_log_level", default=None, help="log level for TensorFlow C++ output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
     parser.add_argument("--log_file", default=None, help="path to a log file. Output is sent to both console and file.")
     args = parser.parse_args()
 
