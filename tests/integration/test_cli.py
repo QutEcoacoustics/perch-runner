@@ -125,17 +125,17 @@ class TestEmbedCLI:
         assert not (output / "embeddings").exists()
         assert not (output / "hoplite").exists()
 
-    def test_embed_hoplite_keeps_db(self, runner, workspace):
-        """--embed hoplite keeps the database, no parquet."""
+    def test_embed_writes_db_at_default_path(self, runner, workspace):
+        """Embedding writes the database to output/db by default."""
         source, output, _ = workspace
         site = source / "site"
         site.mkdir()
         shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
 
-        runner(source, output, "--embed", "hoplite")
+        runner(source, output, "--embed", "parquet")
 
-        assert (output / "hoplite").exists()
-        assert not (output / "embeddings").exists()
+        assert (output / "db").exists()
+        assert (output / "embeddings").exists()
 
 
 # Import model metadata from source of truth

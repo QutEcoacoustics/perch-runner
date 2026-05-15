@@ -3,14 +3,8 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 
-tests/mounted/output/*
-!tests/mounted/output/.gitkeep
-
-tests/mounted/input/*
-!tests/mounted/input/.gitkeep
-
-tests/mounted/config/*
-!tests/mounted/config/.gitkeep
+tests/mounted/*
+!tests/mounted/.gitkeep
 
 local_scripts/
 

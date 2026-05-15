@@ -37,6 +37,20 @@ def main():
     parser.add_argument("--config_file", default=None, help="path to the config file")
     parser.add_argument("--model_choice", default=None, help="model to use, e.g. perch_v2")
     parser.add_argument("--embedding_table_format", default=None, help="table format for embeddings, e.g. serialized, columns")
+    parser.add_argument(
+        "--embeddings_output_path_template",
+        default=None,
+        help=(
+            "custom output path template for embeddings files. "
+            "Supported tokens: {parents}, {basename}, {ext}, {embedding_table_format}, {analysis}."
+        ),
+    )
+    parser.add_argument(
+        "--embeddings_output_path_type",
+        default=None,
+        help="preset output path type: flat_basename, nested_basename, nested, flat",
+    )
+    parser.add_argument("--db_path", default=None, help="database output path. Relative paths are resolved under --output (default: db)")
     parser.add_argument("--file_glob", default=None, help="glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified.")
     parser.add_argument("--workers", default=None, help="number of worker threads for embedding, or 'auto' (default) to choose based on available RAM.")
     parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)")

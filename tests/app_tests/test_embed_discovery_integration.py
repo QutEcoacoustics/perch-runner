@@ -57,15 +57,6 @@ class _FakeEmbeddingModel:
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def workspace(tmp_path):
-    source = tmp_path / "input"
-    source.mkdir()
-    output = tmp_path / "output"
-    output.mkdir()
-    return source, output
-
-
 @pytest.fixture(autouse=True)
 def mock_model():
     """Patches model loading to use _FakeEmbeddingModel (no TF, no CNN)."""
@@ -90,7 +81,7 @@ class TestFileDiscoveryIntegration:
         config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
         embed.create_database(config)
 
-        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
+        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "db"))
         assert db.count_embeddings() > 0
         assert len(db.get_all_recordings()) == 1
 
@@ -108,7 +99,7 @@ class TestFileDiscoveryIntegration:
         config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
         embed.create_database(config)
 
-        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
+        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "db"))
         assert db.count_embeddings() > 0
         filenames = [r.filename for r in db.get_all_recordings()]
         assert any("100sec.wav" in f for f in filenames)
@@ -124,7 +115,7 @@ class TestFileDiscoveryIntegration:
         config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
         embed.create_database(config)
 
-        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
+        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "db"))
         assert db.count_embeddings() > 0
         recordings = db.get_all_recordings()
         assert len(recordings) == 1
@@ -143,7 +134,7 @@ class TestFileDiscoveryIntegration:
         config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
         embed.create_database(config)
 
-        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
+        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "db"))
         assert db.count_embeddings() > 0
         recordings = db.get_all_recordings()
         assert len(recordings) == 1
@@ -159,7 +150,7 @@ class TestFileDiscoveryIntegration:
         config = {**default_config, "source": str(source), "output": str(output), "dataset_name": "search_set"}
         embed.create_database(config)
 
-        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "hoplite"))
+        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(output / "db"))
         assert db.count_embeddings() > 0
         recordings = db.get_all_recordings()
         assert len(recordings) == 1

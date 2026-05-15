@@ -32,6 +32,8 @@ class TestCLIArgsToConfig:
             "--classify", "parquet",
             "--model_choice", "perch_8",
             "--embedding_table_format", "columns",
+            "--embeddings_output_path_type", "nested",
+            "--db_path", "db",
             "--file_glob", "*/*",
             "--workers", "4",
             "--log_level", "debug",
@@ -48,6 +50,9 @@ class TestCLIArgsToConfig:
             parser.add_argument("--config_file", default=None)
             parser.add_argument("--model_choice", default=None)
             parser.add_argument("--embedding_table_format", default=None)
+            parser.add_argument("--embeddings_output_path_template", default=None)
+            parser.add_argument("--embeddings_output_path_type", default=None)
+            parser.add_argument("--db_path", default=None)
             parser.add_argument("--file_glob", default=None)
             parser.add_argument("--workers", default=None)
             parser.add_argument("--log_level", default=None)
@@ -61,6 +66,8 @@ class TestCLIArgsToConfig:
                 "--classify", "parquet",
                 "--model_choice", "perch_8",
                 "--embedding_table_format", "columns",
+                "--embeddings_output_path_type", "nested",
+                "--db_path", "db",
                 "--file_glob", "*/*",
                 "--workers", "4",
                 "--log_level", "debug",
@@ -85,6 +92,11 @@ class TestCLIArgsToConfig:
 
         # Model
         assert config["model_choice"] == ["perch_8"]
+
+        # Output path templating
+        assert config["embeddings_output_path_type"] == "nested"
+        assert config["embeddings_output_path_template"] == "{parents}/{basename}{ext}"
+        assert config["db_path"] == output / "db"
 
         # File glob
         assert config["file_glob"] == "*/*"
@@ -114,6 +126,7 @@ class TestCLIArgsToConfig:
         assert len(config["embed"]) == 1
         assert config["embed"][0].filetype == "parquet"
         assert config["embed"][0].table_format == "serialized"
+
 
     def test_no_flags_produces_error(self, tmp_path):
         """No --embed or --classify flags: load_config should raise ValueError."""
@@ -286,8 +299,17 @@ class TestModuleLevel:
 class TestVersionCommand:
 
     def test_version_prints_and_exits(self, capsys):
-        with patch("sys.argv", ["app", "version"]):
-            main()
+        from unittest.mock import patch
+        import os
+        import importlib
+        with patch.dict(os.environ, {"APP_VERSION": "dev"}):
+            import src.version
+            importlib.reload(src.version)
+            import src.app
+            importlib.reload(src.app)
+            from src.app import main
+            with patch("sys.argv", ["app", "version"]):
+                main()
         output = capsys.readouterr().out
         assert "perch-runner dev" in output
         assert "perch-hoplite" in output

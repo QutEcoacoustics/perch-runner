@@ -7,10 +7,17 @@ import pytest
 import yaml
 
 from src.config import (
+    ALLOWED_OUTPUT_TEMPLATE_TOKENS,
+    DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE,
+    OUTPUT_PATH_TYPE_TEMPLATES,
     EmbeddingsFormat,
+    ensure_output_path_within_root,
+    render_embeddings_output_relative_path,
     normalize_bool_string,
     parse_list_values,
     validate_embed_config,
+    validate_embeddings_output_path_template,
+    validate_single_value,
     validate_value,
     load_config,
     find_config,
@@ -343,7 +350,8 @@ class TestLoadConfig:
     def test_embed_cross_product_via_load_config(self, make_config):
         """Full integration: embed + embedding_table_format cross-product."""
         path = make_config({"embed": "parquet,csv",
-                           "embedding_table_format": "serialized,columns"})
+                           "embedding_table_format": "serialized,columns",
+                           "embeddings_output_path_template": "{parents}/{basename}-{embedding_table_format}{ext}"})
         config = load_config(config_path=path)
         pairs = {(r.filetype, r.table_format) for r in config["embed"]}
         assert pairs == {
@@ -655,17 +663,15 @@ class TestValidateEmbedEdgeCases:
         with pytest.raises(ValueError):
             validate_embed_config("", {"serialized"})
 
-    def test_hoplite_filetype(self):
-        """hoplite is a valid filetype."""
-        result = validate_embed_config("hoplite", {"serialized"})
-        assert len(result) == 1
-        assert result[0].filetype == "hoplite"
+    def test_hoplite_filetype_invalid(self):
+        """hoplite is no longer a valid tabular embed filetype."""
+        with pytest.raises(ValueError, match="Invalid filetype"):
+            validate_embed_config("hoplite", {"serialized"})
 
-    def test_hoplite_with_columns(self):
-        """hoplite + columns is valid."""
-        result = validate_embed_config("hoplite-columns", {"serialized"})
-        assert result[0].filetype == "hoplite"
-        assert result[0].table_format == "columns"
+    def test_hoplite_with_columns_invalid(self):
+        """hoplite + columns is invalid for tabular embed output."""
+        with pytest.raises(ValueError, match="Invalid filetype"):
+            validate_embed_config("hoplite-columns", {"serialized"})
 
 
 # ---------------------------------------------------------------------------
@@ -685,3 +691,137 @@ class TestLoadConfigPaths:
         """Passing a directory as config_path raises error."""
         with pytest.raises(Exception):
             load_config(config_path=str(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# embeddings_output_path_template / embeddings_output_path_type
+# ---------------------------------------------------------------------------
+
+class TestOutputPathTemplateConfig:
+
+    def test_validate_single_value_for_output_type(self):
+        assert validate_single_value("nested", "embeddings_output_path_type") == "nested"
+
+    def test_validate_single_value_rejects_multiple(self):
+        with pytest.raises(ValueError, match="single value"):
+            validate_single_value("nested,flat", "embeddings_output_path_type")
+
+    def test_validate_template_accepts_allowed_tokens(self):
+        template = "{parents}/{basename}-{embedding_table_format}-{analysis}{ext}"
+        assert validate_embeddings_output_path_template(template) == template
+
+    def test_validate_template_rejects_unknown_tokens(self):
+        with pytest.raises(ValueError, match="Invalid token"):
+            validate_embeddings_output_path_template("{basename}-{unknown}{ext}")
+
+    def test_validate_template_rejects_absolute(self):
+        with pytest.raises(ValueError, match="relative"):
+            validate_embeddings_output_path_template("/abs/{basename}{ext}")
+
+    def test_validate_template_rejects_parent_traversal(self):
+        with pytest.raises(ValueError, match="may not contain '..'"):
+            validate_embeddings_output_path_template("../{basename}{ext}")
+
+    def test_load_config_rejects_template_and_type_together(self, make_config):
+        path = make_config({
+            "embeddings_output_path_template": "{basename}{ext}",
+            "embeddings_output_path_type": "flat_basename",
+        })
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            load_config(config_path=path)
+
+    def test_load_config_maps_type_to_template(self, make_config):
+        path = make_config({"embeddings_output_path_type": "flat"})
+        config = load_config(config_path=path)
+        assert config["embeddings_output_path_type"] == "flat"
+        assert config["embeddings_output_path_template"] == OUTPUT_PATH_TYPE_TEMPLATES["flat"]
+
+    def test_load_config_keeps_custom_template(self, make_config):
+        template = "{parents}/{basename}-{analysis}{ext}"
+        path = make_config({"embeddings_output_path_template": template})
+        config = load_config(config_path=path)
+        assert config["embeddings_output_path_template"] == template
+        assert config["embeddings_output_path_type"] is None
+
+    def test_load_config_uses_default_template_when_both_unset(self, make_config):
+        path = make_config()
+        config = load_config(config_path=path)
+        assert config["embeddings_output_path_type"] is None
+        assert config["embeddings_output_path_template"] == DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
+
+
+class TestOutputPathTemplateRendering:
+
+    def test_render_nested_tokens(self, tmp_path):
+        rel = Path("site/day/audio.wav")
+        rendered = render_embeddings_output_relative_path(
+            template="{parents}/{basename}-{embedding_table_format}-{analysis}{ext}",
+            audio_file=rel,
+            output_ext="parquet",
+            embedding_table_format="columns",
+            analysis="embed",
+        )
+        assert rendered.as_posix() == "site/day/audio.wav-columns-embed.parquet"
+
+    def test_render_appends_ext_when_ext_token_missing(self, tmp_path):
+        rendered = render_embeddings_output_relative_path(
+            template="{basename}",
+            audio_file=Path("file.wav"),
+            output_ext="csv",
+            embedding_table_format="serialized",
+            analysis="embed",
+        )
+        assert rendered.as_posix() == "file.wav.csv"
+
+    def test_render_keeps_matching_hardcoded_ext(self, tmp_path):
+        rendered = render_embeddings_output_relative_path(
+            template="{basename}.parquet",
+            audio_file=Path("file.wav"),
+            output_ext="parquet",
+            embedding_table_format="serialized",
+            analysis="embed",
+        )
+        assert rendered.as_posix() == "file.wav.parquet"
+
+    def test_render_warns_and_appends_on_mismatched_hardcoded_ext(self, tmp_path):
+        with pytest.warns(UserWarning, match="hardcoded extension"):
+            rendered = render_embeddings_output_relative_path(
+                template="{basename}.csv",
+                audio_file=Path("file.wav"),
+                output_ext="parquet",
+                embedding_table_format="serialized",
+                analysis="embed",
+            )
+        assert rendered.as_posix() == "file.wav.csv.parquet"
+
+    def test_render_rejects_relative_traversal_after_render(self, tmp_path):
+        with pytest.raises(ValueError, match="may not contain '..'"):
+            render_embeddings_output_relative_path(
+                template="../{basename}{ext}",
+                audio_file=Path("file.wav"),
+                output_ext="parquet",
+                embedding_table_format="serialized",
+                analysis="embed",
+            )
+
+    def test_output_path_containment(self, tmp_path):
+        root = tmp_path / "output"
+        root.mkdir()
+        abs_path = ensure_output_path_within_root(Path("nested/file.parquet"), root)
+        assert abs_path == (root / "nested/file.parquet").resolve()
+
+    def test_output_path_rejects_escape(self, tmp_path):
+        root = tmp_path / "output"
+        root.mkdir()
+        with pytest.raises(ValueError):
+            ensure_output_path_within_root(Path("../escape.parquet"), root)
+
+
+def test_allowed_template_tokens_documented_set():
+    assert ALLOWED_OUTPUT_TEMPLATE_TOKENS == {
+        "parents",
+        "basename",
+        "ext",
+        "embedding_table_format",
+        "analysis",
+    }
