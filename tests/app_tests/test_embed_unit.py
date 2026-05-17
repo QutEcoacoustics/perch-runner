@@ -29,18 +29,6 @@ class _FakeSFInfo:
         self.duration = duration
 
 
-def _make_audio_tree(root, files):
-    """Create empty files under root. files is a dict of {relative_path: ext}.
-
-    For audio files, also patches them so sf.info returns a fake duration.
-    Returns a mapping of filename -> duration for convenience.
-    """
-    for relpath in files:
-        path = root / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch()
-
-
 # ---------------------------------------------------------------------------
 # _scan_audio_files
 # ---------------------------------------------------------------------------
@@ -382,3 +370,35 @@ class TestCreateDatabase:
         # Runs without error — min_audio_len_s filtering is done by perch_hoplite
         result = embed.create_database(config)
         assert result == 0.0  # _scan_audio_files on empty .wav returns 0
+
+    def test_source_file_forces_filename_glob(self, tmp_path):
+        """When source is a file, base_path is parent and file_glob is filename."""
+        source_dir = tmp_path / "input"
+        source_dir.mkdir()
+        target_file = source_dir / "justthisonefile.wav"
+        target_file.touch()
+        (source_dir / "other.wav").touch()
+
+        output = tmp_path / "output"
+        output.mkdir()
+        config = {
+            "source": str(target_file),
+            "output": str(output),
+            "db_path": str(output / "db"),
+            "model_choice": "perch_v2",
+            "dataset_name": "search_set",
+            "file_glob": "*",  # should be ignored for single-file source
+        }
+
+        with mock.patch("src.embed_create_db._scan_audio_files", return_value=0.0) as mock_scan:
+            embed.create_database(config)
+
+        mock_scan.assert_called_once_with(
+            source_dir,
+            "justthisonefile.wav",
+            discovered_audio_files=None,
+        )
+
+        kwargs = embed_create_db.source_info.AudioSourceConfig.call_args.kwargs
+        assert kwargs["base_path"] == str(source_dir)
+        assert kwargs["file_glob"] == "justthisonefile.wav"

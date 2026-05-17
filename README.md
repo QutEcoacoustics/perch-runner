@@ -8,7 +8,7 @@ A Docker container that generates [Perch](https://github.com/google-research/per
 docker run --rm \
   -v /path/to/audio:/mnt/input \
   -v /path/to/output:/mnt/output \
-  qutecoacoustics/perchrunner:latest --embed
+  qutecoacoustics/perchrunner:latest analyze --embed
 ```
 
 This processes all audio files in `/path/to/audio` and writes Parquet embedding files to `/path/to/output/embeddings/`.
@@ -20,17 +20,34 @@ docker run --rm \
   -v <source>:/mnt/input \
   -v <output>:/mnt/output \
   [-v <config_dir>:/mnt/config] \
-  qutecoacoustics/perchrunner:latest [options]
+  qutecoacoustics/perchrunner:latest <subcommand> [options]
 ```
 
-### Options
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `analyze` | Run embedding/classification pipeline |
+| `version` | Print perch-runner, perch-hoplite, and model versions |
+| `config` | Print default resolved config as JSON |
+
+### Analyze Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--embed [format]` | Generate embeddings. Common formats: `parquet` or `hoplite` | `parquet` |
+| `--embed [format]` | Generate embeddings. Examples: `parquet`, `csv`, `parquet-columns`, `csv-columns` | `parquet` |
+| `--classify [format]` | Classification mode selector (accepted values: `parquet`, `csv`, `hoplite`; currently not implemented) | `csv` |
 | `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
 | `--embedding_table_format` | Table layout: `serialized` or `columns` | `serialized` |
+| `--embeddings_output_path_template` | Output path template tokens: `{parents}`, `{basename}`, `{ext}`, `{embedding_table_format}`, `{analysis}` | `{parents}/{basename}/embeddings{ext}` |
+| `--embeddings_output_path_type` | Preset output layout: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--db_path` | Database path; relative paths resolve under output | `db` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
+| `--workers` | Worker count or `auto` | `auto` |
+| `--log_level` | App log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | `INFO` |
+| `--hoplite_log_level` | Library/root log level | `WARNING` |
+| `--tf_log_level` | TensorFlow C++ log level | `WARNING` |
+| `--log_file` | Optional log file path | None |
 | `--config_file` | Path to a YAML config file | None |
 | `--source` | Override source path (default: `/mnt/input`) | `/mnt/input` |
 | `--output` | Override output path (default: `/mnt/output`) | `/mnt/output` |
@@ -58,8 +75,6 @@ Each Parquet file contains one row per 5-second window with columns: `source`, `
 
 With `--embedding_table_format columns`, the `embeddings` column is replaced by individual dimension columns (`f0000`, `f0001`, ...).
 
-With `--embed hoplite`, the raw Hoplite/USearch database is kept at `/mnt/output/hoplite/` and no Parquet files are produced.
-
 ### Config File
 
 Instead of CLI flags, you can mount a YAML config file:
@@ -78,7 +93,7 @@ docker run --rm \
   -v /path/to/audio:/mnt/input \
   -v /path/to/output:/mnt/output \
   -v /path/to/config:/mnt/config \
-  qutecoacoustics/perchrunner:latest --config_file /mnt/config/config.yml
+  qutecoacoustics/perchrunner:latest analyze --config_file /mnt/config/config.yml
 ```
 
 ## Models

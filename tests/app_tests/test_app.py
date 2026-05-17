@@ -25,8 +25,25 @@ class TestCLIArgsToConfig:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", [
-            "app",
+        # Parse args the same way main() does, but test load_config directly.
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--embed", nargs='?', const=True, default=None)
+        parser.add_argument("--classify", nargs='?', const=True, default=None)
+        parser.add_argument("--source", default=None)
+        parser.add_argument("--output", default=None)
+        parser.add_argument("--config_file", default=None)
+        parser.add_argument("--model_choice", default=None)
+        parser.add_argument("--embedding_table_format", default=None)
+        parser.add_argument("--embeddings_output_path_template", default=None)
+        parser.add_argument("--embeddings_output_path_type", default=None)
+        parser.add_argument("--db_path", default=None)
+        parser.add_argument("--file_glob", default=None)
+        parser.add_argument("--workers", default=None)
+        parser.add_argument("--log_level", default=None)
+        parser.add_argument("--hoplite_log_level", default=None)
+        parser.add_argument("--tf_log_level", default=None)
+        parser.add_argument("--log_file", default=None)
+        args = parser.parse_args([
             "--source", str(source),
             "--output", str(output),
             "--embed", "parquet-columns,csv",
@@ -41,42 +58,8 @@ class TestCLIArgsToConfig:
             "--hoplite_log_level", "warning",
             "--tf_log_level", "error",
             "--log_file", "/tmp/test.log",
-        ]), patch("src.app.embed"), patch("src.app.setup_logging"):
-            # Parse args the same way main() does
-            parser = argparse.ArgumentParser()
-            parser.add_argument("--embed", nargs='?', const=True, default=None)
-            parser.add_argument("--classify", nargs='?', const=True, default=None)
-            parser.add_argument("--source", default=None)
-            parser.add_argument("--output", default=None)
-            parser.add_argument("--config_file", default=None)
-            parser.add_argument("--model_choice", default=None)
-            parser.add_argument("--embedding_table_format", default=None)
-            parser.add_argument("--embeddings_output_path_template", default=None)
-            parser.add_argument("--embeddings_output_path_type", default=None)
-            parser.add_argument("--db_path", default=None)
-            parser.add_argument("--file_glob", default=None)
-            parser.add_argument("--workers", default=None)
-            parser.add_argument("--log_level", default=None)
-            parser.add_argument("--hoplite_log_level", default=None)
-            parser.add_argument("--tf_log_level", default=None)
-            parser.add_argument("--log_file", default=None)
-            args = parser.parse_args([
-                "--source", str(source),
-                "--output", str(output),
-                "--embed", "parquet-columns,csv",
-                "--classify", "parquet",
-                "--model_choice", "perch_8",
-                "--embedding_table_format", "columns",
-                "--embeddings_output_path_type", "nested",
-                "--db_path", "db",
-                "--file_glob", "*/*",
-                "--workers", "4",
-                "--log_level", "debug",
-                "--hoplite_log_level", "warning",
-                "--tf_log_level", "error",
-                "--log_file", "/tmp/test.log",
-            ])
-            config = load_config(config_path=None, args=args)
+        ])
+        config = load_config(config_path=None, args=args)
 
         # Paths
         assert config["source"] == source

@@ -23,7 +23,9 @@ def compute_workers(workers_config, available_ram_gb: float | None = None) -> in
         available_ram_gb: Override for testing. If None, reads from system.
 
     Returns:
-        Number of worker threads (minimum 1, maximum 8).
+        Number of worker threads.
+        Explicit values set in config are clamped to a minimum of 1.
+        Auto mode when no workers set in config is clamped to the range 1..8.
     """
     if workers_config != 'auto':
         return max(1, int(workers_config))

@@ -189,6 +189,7 @@ def finalize_inprogress_file(
         log.info("Finalized %s (deduped, sorted, renamed)", final_path)
     except (OSError, ValueError) as e:
         log.error("Failed to finalize %s: %s", inprogress_path, e)
+        raise
 
 
 def build_rows(source_value, entries: list[tuple[float, int]], embedding_table_format, db) -> pd.DataFrame:

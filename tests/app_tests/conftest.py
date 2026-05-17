@@ -8,7 +8,7 @@ import tqdm
 # interfere with subprocess-based test isolation.
 tqdm.tqdm.monitor_interval = 0
 
-# the folder in which we will create temporay directories for input, output 
+# the folder in which we will create temporary directories for input, output 
 MOUNTED_TEMP_PARENT = Path(__file__).resolve().parents[1] / "mounted"
 
 

@@ -111,10 +111,19 @@ def create_database(config: dict):
     shard_length_in_seconds = 60
     dataset_name = config['dataset_name']
 
+    # If source is a single file, treat its parent as base_path and force the
+    # glob to the filename so only that file is processed.
+    single_source_filename = None
+    if source.is_file():
+        single_source_filename = source.name
+        source = source.parent
+
     # Use configured glob pattern, or auto-detect from file depth.
     configured_file_glob = config.get('file_glob')
     discovered_audio_files = None
-    if configured_file_glob:
+    if single_source_filename is not None:
+        file_glob = single_source_filename
+    elif configured_file_glob:
         file_glob = configured_file_glob
     else:
         # we do source file discovery so we can report stats and so we can auto-detect a glob pattern that matches the shallowest files

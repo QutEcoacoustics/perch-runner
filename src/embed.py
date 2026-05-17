@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 
 from src.config import config_to_json
-from src.embed_create_db import create_database
+from src.embed_create_db import _detect_glob_pattern, _scan_audio_files, create_database
 from src.embed_export_table import export_embeddings_table
 from src.resources import log_ram
 from src.version import PERCH_HOPLITE_VERSION, __version__

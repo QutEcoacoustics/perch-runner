@@ -137,6 +137,19 @@ class TestExportAsParquetUnit:
             df = pd.read_parquet(parquet_file)
             assert df["offset"].is_monotonic_increasing, f"Offsets not sorted in {parquet_file}"
 
+    def test_finalize_failure_raises(self, workspace):
+        """Finalization failure should raise so the export run fails."""
+        _, output = workspace
+        output = output / "embeddings"
+
+        with mock.patch("src.embed_export_table.pq.write_table", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                embed.export_embeddings_table(
+                    db_path="tests/files/hoplite_perch_v2",
+                    output_path=str(output),
+                    embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+                )
+
 
 # ---------------------------------------------------------------------------
 # Integration Tests: export_as_parquet with real fixture databases
