@@ -25,6 +25,7 @@ def export_embeddings_table(
     embeddings_formats: list[EmbeddingsFormat],
     sourcemap=None,
     output_template=None,
+    parquet_metadata: dict[str, str] | None = None,
 ):
     """Export embeddings from a perch-hoplite database to tabular files.
 
@@ -42,6 +43,8 @@ def export_embeddings_table(
         embeddings_formats: List of EmbeddingsFormat objects specifying which
             combinations of filetype (csv/parquet) and table_format (serialized/columns)
             to export.
+        parquet_metadata: Optional metadata key/value pairs to write into
+            parquet file footer metadata.
     """
 
     if sourcemap is None:
@@ -138,11 +141,19 @@ def export_embeddings_table(
             writer.close()
 
         for inprogress_path in inprogress_paths:
-            finalize_inprogress_file(inprogress_path, filetype)
+            finalize_inprogress_file(
+                inprogress_path,
+                filetype,
+                parquet_metadata=parquet_metadata,
+            )
 
 
 
-def finalize_inprogress_file(inprogress_path: Path, filetype: str) -> None:
+def finalize_inprogress_file(
+    inprogress_path: Path,
+    filetype: str,
+    parquet_metadata: dict[str, str] | None = None,
+) -> None:
     """Finalize a .inprogress file by deduping, sorting, and writing final output."""
 
     try:
@@ -160,7 +171,17 @@ def finalize_inprogress_file(inprogress_path: Path, filetype: str) -> None:
 
         final_path = inprogress_path.with_suffix('')
         if filetype == 'parquet':
-            df.to_parquet(final_path, index=False, compression=PARQUET_COMPRESSION)
+            table = pa.Table.from_pandas(df, preserve_index=False)
+
+            schema_metadata = dict(table.schema.metadata or {})
+            if parquet_metadata:
+                schema_metadata.update({
+                    str(key).encode("utf-8"): str(value).encode("utf-8")
+                    for key, value in parquet_metadata.items()
+                })
+            table = table.replace_schema_metadata(schema_metadata)
+
+            pq.write_table(table, final_path, compression=PARQUET_COMPRESSION)
         elif filetype == 'csv':
             df.to_csv(final_path, index=False)
 

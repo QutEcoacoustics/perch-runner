@@ -1,5 +1,6 @@
 """Parsing config files."""
 
+import json
 import re
 import warnings
 import yaml
@@ -102,6 +103,31 @@ class EmbeddingsFormat:
             raise ValueError(f"Invalid table format: {table_format}. Valid options are: {self.valid_table_formats}")
         self.filetype = filetype
         self.table_format = table_format
+
+
+def _json_safe_value(value):
+    """Convert config values into JSON-serializable structures."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, EmbeddingsFormat):
+        return {
+            "filetype": value.filetype,
+            "table_format": value.table_format,
+        }
+    if isinstance(value, dict):
+        return {str(k): _json_safe_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(v) for v in value]
+    if isinstance(value, set):
+        return sorted(_json_safe_value(v) for v in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def config_to_json(config: dict, *, sort_keys: bool = True) -> str:
+    """Serialize a config dict to JSON with support for non-JSON config types."""
+    return json.dumps(_json_safe_value(config), sort_keys=sort_keys)
 
 
 def validate_embed_config(embed_config_val, fallback_table_formats):
@@ -314,7 +340,6 @@ def load_config(config_path=None, args=None):
             with open(config_file, 'r') as f:
                 config = yaml.safe_load(f) or {}
         elif config_file.suffix == '.json':
-            import json
             with open(config_file, 'r') as f:
                 config = json.load(f)
         else:
@@ -350,10 +375,14 @@ def load_config(config_path=None, args=None):
             "embeddings_output_path_template and embeddings_output_path_type are mutually exclusive"
         )
 
-    # validate allow-lists
-    for key in ["model_choice", "embedding_table_format"]:
-        if key in config:
-            config[key] = validate_value(config, key)
+    if "model_choice" in config:
+        config["model_choice"] = validate_single_value(
+            config["model_choice"],
+            "model_choice",
+        )
+
+    if "embedding_table_format" in config:
+        config["embedding_table_format"] = validate_value(config, "embedding_table_format")
 
     if config["embeddings_output_path_type"] is not None:
         config["embeddings_output_path_type"] = validate_single_value(

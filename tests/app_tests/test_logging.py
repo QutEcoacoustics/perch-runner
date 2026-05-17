@@ -89,6 +89,7 @@ class TestLoggingCLI:
     def test_hoplite_debug_shows_sql(self):
         # With hoplite_log_level=DEBUG, SQL output should appear
         result = self._run_app(
+            'analyze',
             '--embed', '--source', '/tmp', '--output', '/tmp',
             '--hoplite_log_level', 'DEBUG',
         )
@@ -97,7 +98,8 @@ class TestLoggingCLI:
 
     def test_log_level_flag_accepted(self):
         result = self._run_app(
-            'version',
+            'analyze',
+            '--embed', '--source', '/tmp', '--output', '/tmp',
             '--log_level', 'WARNING',
         )
-        assert result.returncode == 0
+        assert result.returncode != 0

@@ -2,12 +2,23 @@ import logging
 import time
 from pathlib import Path
 
-from src.embed_create_db import _detect_glob_pattern, _scan_audio_files, create_database
+from src.config import config_to_json
+from src.embed_create_db import create_database
 from src.embed_export_table import export_embeddings_table
 from src.resources import log_ram
+from src.version import PERCH_HOPLITE_VERSION, __version__
 
 log = logging.getLogger(__name__)
 
+
+
+def _make_export_metadata(config: dict) -> dict[str, str]:
+    """Build parquet file-level metadata for exported embeddings."""
+    return {
+        "perch_runner.version": __version__,
+        "perch_hoplite.version": PERCH_HOPLITE_VERSION,
+        "perch_runner.config_json": config_to_json(config, sort_keys=True),
+    }
 
 
 def embed(config: dict):
@@ -36,6 +47,7 @@ def embed(config: dict):
             output_path=output_root / 'embeddings',
             embeddings_formats=embed_formats,
             output_template=config.get('embeddings_output_path_template'),
+            parquet_metadata=_make_export_metadata(config),
         )
 
     elapsed = time.monotonic() - t_start

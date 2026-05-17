@@ -11,6 +11,7 @@ from src.config import (
     DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE,
     OUTPUT_PATH_TYPE_TEMPLATES,
     EmbeddingsFormat,
+    config_to_json,
     ensure_output_path_within_root,
     render_embeddings_output_relative_path,
     normalize_bool_string,
@@ -148,6 +149,31 @@ class TestParseListValues:
 
 
 # ---------------------------------------------------------------------------
+# config_to_json
+# ---------------------------------------------------------------------------
+
+class TestConfigToJson:
+
+    def test_handles_config_types(self, tmp_path):
+        config = {
+            "source": tmp_path / "input",
+            "embed": [EmbeddingsFormat("parquet", "serialized")],
+            "classify": {"csv", "parquet"},
+            "nested": {
+                "db_path": tmp_path / "output" / "db",
+            },
+        }
+
+        rendered = config_to_json(config)
+        parsed = json.loads(rendered)
+
+        assert parsed["source"] == str(tmp_path / "input")
+        assert parsed["embed"] == [{"filetype": "parquet", "table_format": "serialized"}]
+        assert parsed["classify"] == ["csv", "parquet"]
+        assert parsed["nested"]["db_path"] == str(tmp_path / "output" / "db")
+
+
+# ---------------------------------------------------------------------------
 # validate_embed_config
 # ---------------------------------------------------------------------------
 
@@ -235,14 +261,17 @@ class TestValidateEmbedConfig:
 class TestValidateValue:
 
     def test_valid_model_choice(self):
-        config = {"model_choice": "perch_v2"}
-        result = validate_value(config, "model_choice")
-        assert result == ["perch_v2"]
+        result = validate_single_value("perch_v2", "model_choice")
+        assert result == "perch_v2"
 
     def test_invalid_model_choice(self):
-        config = {"model_choice": "gpt4"}
+        config = "gpt4"
         with pytest.raises(ValueError, match="Invalid model_choice"):
-            validate_value(config, "model_choice")
+            validate_single_value(config, "model_choice")
+
+    def test_multiple_model_choices_are_rejected(self):
+        with pytest.raises(ValueError, match="must be a single value"):
+            validate_single_value("perch_v2,perch_8", "model_choice")
 
     def test_classify_comma_separated(self):
         config = {"classify": "parquet,csv"}
@@ -419,7 +448,7 @@ class TestConfigEdgeCases:
             file_glob=None,
         )
         config = load_config(config_path=str(config_file), args=args)
-        assert config["model_choice"] == ["perch_v2"]
+        assert config["model_choice"] == "perch_v2"
 
     def test_yaml_only_comments(self, tmp_path):
         """A YAML file with only comments should use defaults."""
@@ -441,7 +470,7 @@ class TestConfigEdgeCases:
             file_glob=None,
         )
         config = load_config(config_path=str(config_file), args=args)
-        assert config["model_choice"] == ["perch_v2"]
+        assert config["model_choice"] == "perch_v2"
 
     def test_malformed_yaml(self, tmp_path):
         """Malformed YAML should raise an error."""

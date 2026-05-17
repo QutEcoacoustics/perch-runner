@@ -136,9 +136,6 @@ def create_database(config: dict):
     log_ram()
 
     model_config_key = config['model_choice']
-    # extract single model from list (deterministic due to sorted order)
-    if isinstance(model_config_key, list):
-        model_config_key = model_config_key[0]
     log.info("Using embedding model: %s", model_config_key)
     preset_info = model_configs.get_preset_model_config(model_config_key)
 

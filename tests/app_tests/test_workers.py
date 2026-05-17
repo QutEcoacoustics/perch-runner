@@ -73,17 +73,19 @@ class TestExitCodes:
 
     def test_missing_source_exits_nonzero(self):
         result = self._run_app(
+            'analyze',
             '--embed', '--source', '/nonexistent/path', '--output', '/tmp'
         )
         assert result.returncode != 0
 
     def test_no_action_exits_nonzero(self):
         # No --embed or --classify should fail config validation.
-        result = self._run_app('--source', '/tmp', '--output', '/tmp')
+        result = self._run_app('analyze', '--source', '/tmp', '--output', '/tmp')
         assert result.returncode != 0
 
     def test_invalid_model_exits_nonzero(self):
         result = self._run_app(
+            'analyze',
             '--embed', '--model_choice', 'bogus_model'
         )
         assert result.returncode != 0

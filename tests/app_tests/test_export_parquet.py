@@ -9,6 +9,7 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 import pytest
+import pyarrow.parquet as pq
 
 from src import embed
 from src import data_frames
@@ -48,7 +49,7 @@ class TestExportAsParquetUnit:
 
     def test_creates_output_dir_if_missing(self, workspace):
         """Output directory is created if it doesn't exist."""
-        source, output = workspace
+        _, output = workspace
         output = output / "deeply" / "nested" / "output"
         assert not output.exists()
 
@@ -63,7 +64,7 @@ class TestExportAsParquetUnit:
 
     def test_custom_sourcemap_function(self, workspace):
         """Custom sourcemap changes output paths."""
-        source, output = workspace
+        _, output = workspace
         output = output / "embeddings"
 
         def custom_map(source_filename):
@@ -81,9 +82,35 @@ class TestExportAsParquetUnit:
         df = pd.read_parquet(parquets[0])
         assert df["source"].str.startswith("custom::").all()
 
+    def test_parquet_metadata_written(self, workspace):
+        """Custom metadata is written to parquet footer metadata."""
+        _, output = workspace
+        output = output / "embeddings"
+
+        metadata = {
+            "perch_runner.version": "test-version",
+            "perch_hoplite.version": "test-hoplite",
+            "perch_runner.config_json": '{"embed":"parquet"}',
+        }
+
+        embed.export_embeddings_table(
+            db_path="tests/files/hoplite_perch_v2",
+            output_path=str(output),
+            embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+            parquet_metadata=metadata,
+        )
+
+        parquets = sorted(output.rglob("*.parquet"))
+        assert len(parquets) > 0
+
+        footer_metadata = pq.read_metadata(parquets[0]).metadata or {}
+        assert footer_metadata[b"perch_runner.version"] == b"test-version"
+        assert footer_metadata[b"perch_hoplite.version"] == b"test-hoplite"
+        assert footer_metadata[b"perch_runner.config_json"] == b'{"embed":"parquet"}'
+
     def test_multiple_sources_in_db(self, workspace):
         """Pre-generated DB with 2 sources produces 2 parquet file trees."""
-        source, output = workspace
+        _, output = workspace
         output = output / "embeddings"
 
         embed.export_embeddings_table(
@@ -97,7 +124,7 @@ class TestExportAsParquetUnit:
 
     def test_offsets_sorted_per_source(self, workspace):
         """Parquet output has offsets sorted within each source."""
-        source, output = workspace
+        _, output = workspace
         output = output / "embeddings"
 
         embed.export_embeddings_table(
@@ -106,9 +133,9 @@ class TestExportAsParquetUnit:
             embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
         )
 
-        for pq in output.rglob("*.parquet"):
-            df = pd.read_parquet(pq)
-            assert df["offset"].is_monotonic_increasing, f"Offsets not sorted in {pq}"
+        for parquet_file in output.rglob("*.parquet"):
+            df = pd.read_parquet(parquet_file)
+            assert df["offset"].is_monotonic_increasing, f"Offsets not sorted in {parquet_file}"
 
 
 # ---------------------------------------------------------------------------

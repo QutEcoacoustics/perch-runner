@@ -5,13 +5,14 @@ Entrypoint for processing a folder of audio files
 """
 
 import argparse
+import json
 import logging
 import os
 
 # Limit TF C++ logging before TF is imported (overridden by setup_logging later)
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '1')
 
-from src.config import load_config
+from src.config import default_config, load_config
 from src.logging_config import setup_logging
 from src.version import __version__, MODELS, PERCH_HOPLITE_VERSION
 
@@ -26,18 +27,22 @@ def embed(config):
 def main():
 
     parser = argparse.ArgumentParser(description="Perch Runner: audio embedding and classification")
-    parser.add_argument("command", nargs='?', default=None,
-                        help="Optional command: 'version' to print version and exit.")
-    parser.add_argument("--embed", nargs='?', const=True, default=None,
-                        help="embedding output format(s), e.g. parquet, csv, parquet-columns. Use --embed with no value for default (parquet).")
-    parser.add_argument("--classify", nargs='?', const=True, default=None,
-                        help="classification output format(s), e.g. parquet, csv. Use --classify with no value for default (csv).")
-    parser.add_argument("--source", default=None, help="path to the source audio folder")
-    parser.add_argument("--output", default=None, help="path to the output folder")
-    parser.add_argument("--config_file", default=None, help="path to the config file")
-    parser.add_argument("--model_choice", default=None, help="model to use, e.g. perch_v2")
-    parser.add_argument("--embedding_table_format", default=None, help="table format for embeddings, e.g. serialized, columns")
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    analyze_parser = subparsers.add_parser(
+        "analyze",
+        help="run embedding/classification analysis",
+    )
+    analyze_parser.add_argument("--embed", nargs='?', const=True, default=None,
+                                help="embedding output format(s), e.g. parquet, csv, parquet-columns. Use --embed with no value for default (parquet).")
+    analyze_parser.add_argument("--classify", nargs='?', const=True, default=None,
+                                help="classification output format(s), e.g. parquet, csv. Use --classify with no value for default (csv).")
+    analyze_parser.add_argument("--source", default=None, help="path to the source audio folder")
+    analyze_parser.add_argument("--output", default=None, help="path to the output folder")
+    analyze_parser.add_argument("--config_file", default=None, help="path to the config file")
+    analyze_parser.add_argument("--model_choice", default=None, help="model to use, e.g. perch_v2")
+    analyze_parser.add_argument("--embedding_table_format", default=None, help="table format for embeddings, e.g. serialized, columns")
+    analyze_parser.add_argument(
         "--embeddings_output_path_template",
         default=None,
         help=(
@@ -45,18 +50,22 @@ def main():
             "Supported tokens: {parents}, {basename}, {ext}, {embedding_table_format}, {analysis}."
         ),
     )
-    parser.add_argument(
+    analyze_parser.add_argument(
         "--embeddings_output_path_type",
         default=None,
         help="preset output path type: flat_basename, nested_basename, nested, flat",
     )
-    parser.add_argument("--db_path", default=None, help="database output path. Relative paths are resolved under --output (default: db)")
-    parser.add_argument("--file_glob", default=None, help="glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified.")
-    parser.add_argument("--workers", default=None, help="number of worker threads for embedding, or 'auto' (default) to choose based on available RAM.")
-    parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)")
-    parser.add_argument("--hoplite_log_level", default=None, help="log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
-    parser.add_argument("--tf_log_level", default=None, help="log level for TensorFlow C++ output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
-    parser.add_argument("--log_file", default=None, help="path to a log file. Output is sent to both console and file.")
+    analyze_parser.add_argument("--db_path", default=None, help="database output path. Relative paths are resolved under --output (default: db)")
+    analyze_parser.add_argument("--file_glob", default=None, help="glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified.")
+    analyze_parser.add_argument("--workers", default=None, help="number of worker threads for embedding, or 'auto' (default) to choose based on available RAM.")
+    analyze_parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)")
+    analyze_parser.add_argument("--hoplite_log_level", default=None, help="log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
+    analyze_parser.add_argument("--tf_log_level", default=None, help="log level for TensorFlow C++ output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
+    analyze_parser.add_argument("--log_file", default=None, help="path to a log file. Output is sent to both console and file.")
+
+    subparsers.add_parser("version", help="print version and exit")
+    subparsers.add_parser("config", help="print default config and exit")
+
     args = parser.parse_args()
 
     if args.command == "version":
@@ -67,8 +76,13 @@ def main():
             print(f"  {name}: {info['kaggle']} v{info['version']} ({info['embedding_dim']}d)")
         return
 
+    if args.command == "config":
+        print(json.dumps(default_config, indent=2))
+        return
+
     try:
-        config = load_config(args.config_file, args)
+        config_args = argparse.Namespace(**{k: v for k, v in vars(args).items() if k != "command"})
+        config = load_config(args.config_file, config_args)
         setup_logging(config)
         log = logging.getLogger(__name__)
 

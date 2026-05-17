@@ -362,13 +362,6 @@ class TestCreateDatabase:
 
         assert any("0 embeddings" in r.message for r in caplog.records)
 
-    def test_model_choice_as_list(self, tmp_path):
-        """model_choice as a list extracts the first element."""
-        config = self._base_config(tmp_path, model_choice=["perch_v2"])
-
-        # Should not raise
-        embed.create_database(config)
-
     def test_explicit_file_glob(self, tmp_path):
         """Explicit file_glob in config is used instead of auto-detection."""
         config = self._base_config(tmp_path, file_glob="*/*")

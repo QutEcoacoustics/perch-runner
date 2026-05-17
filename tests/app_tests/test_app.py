@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import socket
 from pathlib import Path
@@ -7,7 +8,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from src.app import main
-from src.config import load_config
+from src.config import default_config, load_config
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ class TestCLIArgsToConfig:
         assert "parquet" in config["classify"]
 
         # Model
-        assert config["model_choice"] == ["perch_8"]
+        assert config["model_choice"] == "perch_8"
 
         # Output path templating
         assert config["embeddings_output_path_type"] == "nested"
@@ -158,7 +159,7 @@ class TestMainDispatch:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed"]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed"]):
             main()
 
         mock_embed.assert_called_once()
@@ -173,7 +174,7 @@ class TestMainDispatch:
         output.mkdir()
 
         # No --embed or --classify should error during config validation
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output)]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output)]):
             with pytest.raises(ValueError, match="At least one of"):
                 main()
         mock_embed.assert_not_called()
@@ -186,7 +187,7 @@ class TestMainDispatch:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed", "none"]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed", "none"]):
             with pytest.raises(ValueError, match="At least one of"):
                 main()
         mock_embed.assert_not_called()
@@ -199,7 +200,7 @@ class TestMainDispatch:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed", "false"]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed", "false"]):
             with pytest.raises(ValueError, match="At least one of"):
                 main()
         mock_embed.assert_not_called()
@@ -216,7 +217,7 @@ class TestMainDispatch:
             f"source: {source}\noutput: {output}\nembed: parquet-columns\n"
         )
 
-        with patch("sys.argv", ["app", "--config_file", str(config_file)]):
+        with patch("sys.argv", ["app", "analyze", "--config_file", str(config_file)]):
             main()
 
         config = mock_embed.call_args[0][0]
@@ -239,7 +240,7 @@ class TestExitCodes:
         output.mkdir()
 
         # No --embed or --classify flag
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output)]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output)]):
             with pytest.raises(ValueError, match="At least one of"):
                 main()
 
@@ -250,7 +251,7 @@ class TestExitCodes:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed"]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 137
@@ -262,7 +263,7 @@ class TestExitCodes:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", ["app", "--source", str(source), "--output", str(output), "--embed"]):
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 1
@@ -272,7 +273,7 @@ class TestExitCodes:
         output = tmp_path / "output"
         output.mkdir()
 
-        with patch("sys.argv", ["app", "--source", "/nonexistent/path", "--output", str(output), "--embed"]):
+        with patch("sys.argv", ["app", "analyze", "--source", "/nonexistent/path", "--output", str(output), "--embed"]):
             with pytest.raises(FileNotFoundError, match="Source path"):
                 main()
 
@@ -323,6 +324,31 @@ class TestVersionCommand:
 
     def test_version_skips_config_loading(self):
         with patch("sys.argv", ["app", "version"]), patch("src.app.load_config") as mock_config:
+            main()
+        mock_config.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Config command
+# ---------------------------------------------------------------------------
+
+class TestConfigCommand:
+
+    def test_config_prints_default_config_and_exits(self, capsys):
+        with patch("sys.argv", ["app", "config"]):
+            main()
+
+        output = capsys.readouterr().out
+        printed = json.loads(output)
+        assert printed == default_config
+
+    def test_config_does_not_call_embed(self):
+        with patch("sys.argv", ["app", "config"]), patch("src.app.embed") as mock_embed:
+            main()
+        mock_embed.assert_not_called()
+
+    def test_config_skips_config_loading(self):
+        with patch("sys.argv", ["app", "config"]), patch("src.app.load_config") as mock_config:
             main()
         mock_config.assert_not_called()
 
