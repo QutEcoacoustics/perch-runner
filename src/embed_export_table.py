@@ -116,29 +116,29 @@ def export_embeddings_table(
         # as we iterate through source, build the set of in-progress files we create so we can finalize them at the end
         inprogress_paths = set()
         parquet_writers: dict[Path, pq.ParquetWriter] = {}
+        try:
+            for i, (source, entries) in enumerate(data_by_source.items(), 1):
+                entries.sort(key=lambda x: x[0])
+                output_source_value = sourcemap(source)
 
-        for i, (source, entries) in enumerate(data_by_source.items(), 1):
-            entries.sort(key=lambda x: x[0])
-            output_source_value = sourcemap(source)
+                dest = dest_paths_map[source]
+                df = build_rows(output_source_value, entries, table_format, db)
+                dest_inprogress = dest.with_suffix(dest.suffix + '.inprogress')
+                dest.parent.mkdir(parents=True, exist_ok=True)
 
-            dest = dest_paths_map[source]
-            df = build_rows(output_source_value, entries, table_format, db)
-            dest_inprogress = dest.with_suffix(dest.suffix + '.inprogress')
-            dest.parent.mkdir(parents=True, exist_ok=True)
+                if filetype == 'parquet':
+                    write_inprogress_parquet(dest_inprogress, df, parquet_writers)
+                elif filetype == 'csv':
+                    write_inprogress_csv(dest_inprogress, df)
+                else:
+                    raise ValueError(f"Unsupported filetype: {filetype}")
 
-            if filetype == 'parquet':
-                write_inprogress_parquet(dest_inprogress, df, parquet_writers)
-            elif filetype == 'csv':
-                write_inprogress_csv(dest_inprogress, df)
-            else:
-                raise ValueError(f"Unsupported filetype: {filetype}")
-
-            inprogress_paths.add(dest_inprogress)
-            log.info("  [%d/%d] Wrote %s (%d rows, %s/%s, inprogress)",
-                     i, len(data_by_source), dest_inprogress.name, len(df), filetype, table_format)
-
-        for writer in parquet_writers.values():
-            writer.close()
+                inprogress_paths.add(dest_inprogress)
+                log.info("  [%d/%d] Wrote %s (%d rows, %s/%s, inprogress)",
+                         i, len(data_by_source), dest_inprogress.name, len(df), filetype, table_format)
+        finally:
+            for writer in parquet_writers.values():
+                writer.close()
 
         for inprogress_path in inprogress_paths:
             finalize_inprogress_file(
@@ -195,16 +195,17 @@ def finalize_inprogress_file(
 def build_rows(source_value, entries: list[tuple[float, int]], embedding_table_format, db) -> pd.DataFrame:
     """Build a DataFrame for one source by fetching embeddings by window id."""
     if embedding_table_format == 'columns':
-        first_embedding = np.asarray(db.get_embedding(entries[0][1]))
-        col_names = data_frames.embedding_col_names(len(first_embedding))
-        rows = []
-        for offset, embedding_id in entries:
-            embedding = np.asarray(db.get_embedding(embedding_id))
-            row = {'source': source_value, 'channel': 0, 'offset': offset}
-            for name, val in zip(col_names, embedding):
-                row[name] = float(val)
-            rows.append(row)
-        return pd.DataFrame(rows)
+        embeddings = [np.asarray(db.get_embedding(embedding_id), dtype=np.float32)
+                      for _, embedding_id in entries]
+        embeddings_matrix = np.vstack(embeddings)
+        col_names = data_frames.embedding_col_names(embeddings_matrix.shape[1])
+
+        df = pd.DataFrame(embeddings_matrix, columns=col_names)
+        offsets = [offset for offset, _ in entries]
+        df.insert(0, 'offset', offsets)
+        df.insert(0, 'channel', 0)
+        df.insert(0, 'source', source_value)
+        return df
 
     rows = []
     for offset, embedding_id in entries:

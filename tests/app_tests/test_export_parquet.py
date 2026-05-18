@@ -150,6 +150,39 @@ class TestExportAsParquetUnit:
                     embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
                 )
 
+    def test_parquet_writers_closed_on_mid_loop_failure(self, workspace):
+        """Parquet writers are closed even if an exception occurs during writing."""
+        _, output = workspace
+        output = output / "embeddings"
+
+        fake_writer = mock.MagicMock()
+        call_count = 0
+
+        def failing_build_rows(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return pd.DataFrame(
+                    {
+                        "source": ["one/100sec.wav"],
+                        "channel": [0],
+                        "offset": [0.0],
+                        "embeddings": [b"x"],
+                    }
+                )
+            raise RuntimeError("boom")
+
+        with mock.patch("src.embed_export_table.pq.ParquetWriter", return_value=fake_writer):
+            with mock.patch("src.embed_export_table.build_rows", side_effect=failing_build_rows):
+                with pytest.raises(RuntimeError, match="boom"):
+                    embed.export_embeddings_table(
+                        db_path="tests/files/hoplite_perch_v2",
+                        output_path=str(output),
+                        embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+                    )
+
+        fake_writer.close.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Integration Tests: export_as_parquet with real fixture databases

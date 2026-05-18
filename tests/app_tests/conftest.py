@@ -14,19 +14,19 @@ MOUNTED_TEMP_PARENT = Path(__file__).resolve().parents[1] / "mounted"
 
 @pytest.fixture
 def workspace(tmp_path):
-	"""
-	Creates a temporary workspace folder for each tests
-	"""
-	# Keep artifacts on mounted storage so they are inspectable from the host.
-	run_dir = MOUNTED_TEMP_PARENT / tmp_path.name
-	if run_dir.exists():
-		shutil.rmtree(run_dir)
-	source = run_dir / "input"
-	source.mkdir(parents=True)
-	output = run_dir / "output"
-	output.mkdir(parents=True)
-	yield source, output
-	if run_dir.exists():
-		shutil.rmtree(run_dir)
+    """
+    Creates a temporary workspace folder for each tests
+    """
+    # Keep artifacts on mounted storage so they are inspectable from the host.
+    run_dir = MOUNTED_TEMP_PARENT / tmp_path.name
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    source = run_dir / "input"
+    source.mkdir(parents=True)
+    output = run_dir / "output"
+    output.mkdir(parents=True)
+    yield source, output
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
 
 from .fixtures.embeddings import *  # noqa: F401

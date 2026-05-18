@@ -345,11 +345,11 @@ class TestNetworkBlocking:
     def test_network_is_blocked_by_default(self):
         """Verify the autouse _block_network fixture is active."""
         with pytest.raises(ConnectionError, match="Network access blocked"):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect(("8.8.8.8", 53))
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect(("8.8.8.8", 53))
 
     def test_download_blocked_in_tests(self):
         """Verify that kagglehub downloads fail for uncached models due to network blocking."""
         import kagglehub
-        with pytest.raises((ConnectionError, Exception), match="Network access blocked|Failed to connect"):
+        with pytest.raises(ConnectionError, match="Network access blocked"):
             kagglehub.model_download("google/bird-vocalization-classifier/tensorFlow2/bird-vocalization-classifier/999")
