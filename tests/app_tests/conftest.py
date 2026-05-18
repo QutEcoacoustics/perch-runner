@@ -16,8 +16,12 @@ MOUNTED_TEMP_PARENT = Path(__file__).resolve().parents[1] / "mounted"
 def workspace(tmp_path):
     """
     Creates a temporary workspace folder for each tests
+    
+    Rather than use tmp_path directly, we create a subdirectory in a mounted location. 
+    This allows us to inspect the generated files during the test runs.
+    tmp_path is only used to get a unique directory name (inside the mounted directory) based on the test function name.
     """
-    # Keep artifacts on mounted storage so they are inspectable from the host.
+
     run_dir = MOUNTED_TEMP_PARENT / tmp_path.name
     if run_dir.exists():
         shutil.rmtree(run_dir)

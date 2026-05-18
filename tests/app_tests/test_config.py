@@ -52,11 +52,25 @@ def make_config(tmp_path):
     return _create
 
 
+@pytest.fixture
+def tmp_dirs(tmp_path):
+    """Fixture that creates source and output directories.
+    These must exist or we get config validation errors. 
+    """
+    source = tmp_path / "input"
+    source.mkdir()
+    output = tmp_path / "output"
+    output.mkdir()
+    return source, output
+
+
 # ---------------------------------------------------------------------------
 # normalize_bool_string
 # ---------------------------------------------------------------------------
 
 class TestNormalizeBoolString:
+
+    # we allow a variety of falsy strings that users might reasonably expect to work, all normalize to False
 
     @pytest.mark.parametrize("value,expected", [
         (None, False),
@@ -118,6 +132,9 @@ class TestEmbeddingsFormat:
 # ---------------------------------------------------------------------------
 
 class TestParseListValues:
+
+    # We allow a single string (e.g. "parquet"), a comma-separated string (e.g. "parquet,csv"), or an actual list/tuple/set of strings. 
+    # The result is always a deduplicated list of lowercase strings.
 
     def test_single_string(self):
         assert parse_list_values("parquet") == ["parquet"]
@@ -295,12 +312,9 @@ class TestValidateValue:
 
 class TestLoadConfig:
 
-    def test_defaults_only(self, tmp_path):
+    def test_defaults_only(self, tmp_dirs):
         """No config file, no args — just defaults."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
+        source, output = tmp_dirs
 
         args = argparse.Namespace(
             embed="parquet",
@@ -313,6 +327,24 @@ class TestLoadConfig:
         config = load_config(config_path=None, args=args)
         assert config["source"] == source
         assert config["output"] == output
+        assert len(config["embed"]) == 1
+        assert config["embed"][0].filetype == "parquet"
+        assert config["embed"][0].table_format == "serialized"
+
+    def test_bare_embed_flag_defaults_to_parquet(self, tmp_dirs):
+        """load_config: embed=True defaults to parquet-serialized."""
+        source, output = tmp_dirs
+
+        args = argparse.Namespace(
+            embed=True,
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+
+        config = load_config(config_path=None, args=args)
         assert len(config["embed"]) == 1
         assert config["embed"][0].filetype == "parquet"
         assert config["embed"][0].table_format == "serialized"
@@ -376,6 +408,72 @@ class TestLoadConfig:
         with pytest.raises(FileNotFoundError, match="Output path"):
             load_config(config_path=str(config_file))
 
+    def test_no_embed_or_classify_raises(self, tmp_dirs):
+        """Validation lives in config layer: both actions missing should raise."""
+        source, output = tmp_dirs
+
+        args = argparse.Namespace(
+            embed=None,
+            classify=None,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+
+        with pytest.raises(ValueError, match="At least one of --embed or --classify"):
+            load_config(config_path=None, args=args)
+
+    def test_embed_false_string_with_classify_enabled(self, tmp_dirs):
+        """--embed false --classify parquet should work (classify is enabled)."""
+        source, output = tmp_dirs
+
+        args = argparse.Namespace(
+            embed="false",
+            classify="parquet",
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+
+        config = load_config(config_path=None, args=args)
+        assert config["embed"] == []
+        assert len(config["classify"]) == 1
+        assert "parquet" in config["classify"]
+
+    def test_embed_false_string_and_classify_false_string_raises(self, tmp_dirs):
+        """--embed false --classify false should raise."""
+        source, output = tmp_dirs
+
+        args = argparse.Namespace(
+            embed="false",
+            classify="false",
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+
+        with pytest.raises(ValueError, match="At least one of --embed or --classify"):
+            load_config(config_path=None, args=args)
+
+    def test_embed_none_string_and_classify_none_string_raises(self, tmp_dirs):
+        """--embed none --classify none should raise."""
+        source, output = tmp_dirs
+
+        args = argparse.Namespace(
+            embed="none",
+            classify="none",
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+
+        with pytest.raises(ValueError, match="At least one of --embed or --classify"):
+            load_config(config_path=None, args=args)
+
     def test_embed_cross_product_via_load_config(self, make_config):
         """Full integration: embed + embedding_table_format cross-product."""
         path = make_config({"embed": "parquet,csv",
@@ -405,12 +503,9 @@ class TestLoadConfig:
         ("*/*", "*/*"),
         ("*/*/*", "*/*/*"),
     ])
-    def test_file_glob_normalization(self, tmp_path, glob_input, expected):
+    def test_file_glob_normalization(self, tmp_dirs, glob_input, expected):
         """file_glob falsy strings normalize to None, real patterns pass through."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
+        source, output = tmp_dirs
 
         args = argparse.Namespace(
             embed="parquet",
@@ -428,12 +523,9 @@ class TestLoadConfig:
 class TestConfigEdgeCases:
     """Tests for malformed, empty, or wrong-type config values."""
 
-    def test_empty_yaml_file(self, tmp_path):
+    def test_empty_yaml_file(self, tmp_path, tmp_dirs):
         """An empty YAML file (safe_load returns None) should use defaults."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
+        source, output = tmp_dirs
 
         config_file = tmp_path / "config.yml"
         config_file.write_text("")
@@ -450,12 +542,9 @@ class TestConfigEdgeCases:
         config = load_config(config_path=str(config_file), args=args)
         assert config["model_choice"] == "perch_v2"
 
-    def test_yaml_only_comments(self, tmp_path):
+    def test_yaml_only_comments(self, tmp_path, tmp_dirs):
         """A YAML file with only comments should use defaults."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
+        source, output = tmp_dirs
 
         config_file = tmp_path / "config.yml"
         config_file.write_text("# this is a comment\n# another comment\n")

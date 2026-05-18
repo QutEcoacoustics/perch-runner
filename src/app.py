@@ -23,9 +23,52 @@ def embed(config):
     return run_embed(config)
 
 
+def handle_analyze(args):
+    """Handle the analyze subcommand."""
+    try:
+        # Filter out argparse-specific fields (command, func) before passing to load_config
+        config_args = argparse.Namespace(**{k: v for k, v in vars(args).items() if k not in ('command', 'func')})
+        config = load_config(args.config_file, config_args)
+        setup_logging(config)
+        log = logging.getLogger(__name__)
 
-def main():
+        log.info("Starting perch-runner version %s", __version__)
 
+        if config['embed']:
+            log.info("Embed requested using model: %s", config['model_choice'])
+            embed(config)
+
+        if config['classify']:
+            log.info("Classify requested using model: %s", config['model_choice'])
+            log.warning("classify is not implemented yet")
+    except MemoryError:
+        logging.getLogger(__name__).error(
+            "OUT OF MEMORY: Not enough RAM to complete embedding. "
+            "Try reducing --workers or increasing container memory.")
+        raise SystemExit(137)
+    except (FileNotFoundError, ValueError):
+        raise
+    except Exception:
+        logging.getLogger(__name__).exception("Fatal error")
+        raise SystemExit(1)
+
+
+def handle_version(args):
+    """Handle the version subcommand."""
+    print(f"perch-runner {__version__}")
+    print(f"perch-hoplite {PERCH_HOPLITE_VERSION}")
+    print("Models:")
+    for name, info in MODELS.items():
+        print(f"  {name}: {info['kaggle']} v{info['version']} ({info['embedding_dim']}d)")
+
+
+def handle_config(args):
+    """Handle the config subcommand."""
+    print(json.dumps(default_config, indent=2))
+
+
+def get_parser():
+    """Create and return the argument parser."""
     parser = argparse.ArgumentParser(description="Perch Runner: audio embedding and classification")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -62,50 +105,21 @@ def main():
     analyze_parser.add_argument("--hoplite_log_level", default=None, help="log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
     analyze_parser.add_argument("--tf_log_level", default=None, help="log level for TensorFlow C++ output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
     analyze_parser.add_argument("--log_file", default=None, help="path to a log file. Output is sent to both console and file.")
+    analyze_parser.set_defaults(func=handle_analyze)
 
-    subparsers.add_parser("version", help="print version and exit")
-    subparsers.add_parser("config", help="print default config and exit")
+    version_parser = subparsers.add_parser("version", help="print version and exit")
+    version_parser.set_defaults(func=handle_version)
 
+    config_parser = subparsers.add_parser("config", help="print default config and exit")
+    config_parser.set_defaults(func=handle_config)
+
+    return parser
+
+
+def main():
+    parser = get_parser()
     args = parser.parse_args()
-
-    if args.command == "version":
-        print(f"perch-runner {__version__}")
-        print(f"perch-hoplite {PERCH_HOPLITE_VERSION}")
-        print("Models:")
-        for name, info in MODELS.items():
-            print(f"  {name}: {info['kaggle']} v{info['version']} ({info['embedding_dim']}d)")
-        return
-
-    if args.command == "config":
-        print(json.dumps(default_config, indent=2))
-        return
-
-    try:
-        config_args = argparse.Namespace(**{k: v for k, v in vars(args).items() if k != "command"})
-        config = load_config(args.config_file, config_args)
-        setup_logging(config)
-        log = logging.getLogger(__name__)
-
-        log.info("Starting perch-runner version %s", __version__)
-
-        if config['embed']:
-            log.info("Embed requested using model: %s", config['model_choice'])
-            embed(config)
-
-        if config['classify']:
-            log.info("Classify requested using model: %s", config['model_choice'])
-            log.warning("classify is not implemented yet")
-    except MemoryError:
-        logging.getLogger(__name__).error(
-            "OUT OF MEMORY: Not enough RAM to complete embedding. "
-            "Try reducing --workers or increasing container memory.")
-        raise SystemExit(137)
-    except (FileNotFoundError, ValueError):
-        # Let config errors propagate as-is (will be caught by Python)
-        raise
-    except Exception:
-        logging.getLogger(__name__).exception("Fatal error")
-        raise SystemExit(1)
+    args.func(args)
 
 
 if __name__ == "__main__":

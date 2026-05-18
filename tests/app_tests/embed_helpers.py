@@ -28,7 +28,7 @@ FIXTURE_DBS = {
     "perch_8": FIXTURES_DIR / "hoplite_perch_8",
 }
 
-# Validate that every model has a fixture DB
+# When this helper loads, we validate that every model has a fixture DB
 _missing_fixtures = set(MODELS.keys()) - set(FIXTURE_DBS.keys())
 if _missing_fixtures:
     raise ValueError(

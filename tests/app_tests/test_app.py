@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import json
 import os
 import socket
@@ -6,13 +7,15 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+import requests
 
-from src.app import main
+from src.app import main, get_parser
 from src.config import default_config, load_config
 
 
 # ---------------------------------------------------------------------------
-# CLI args → config integration
+# This module is mainly testing that cli args are correctly parsed and passed to the config, and that main() dispatches correctly.
+# and non-analyze subcommands work
 # ---------------------------------------------------------------------------
 
 class TestCLIArgsToConfig:
@@ -25,25 +28,9 @@ class TestCLIArgsToConfig:
         output = tmp_path / "output"
         output.mkdir()
 
-        # Parse args the same way main() does, but test load_config directly.
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--embed", nargs='?', const=True, default=None)
-        parser.add_argument("--classify", nargs='?', const=True, default=None)
-        parser.add_argument("--source", default=None)
-        parser.add_argument("--output", default=None)
-        parser.add_argument("--config_file", default=None)
-        parser.add_argument("--model_choice", default=None)
-        parser.add_argument("--embedding_table_format", default=None)
-        parser.add_argument("--embeddings_output_path_template", default=None)
-        parser.add_argument("--embeddings_output_path_type", default=None)
-        parser.add_argument("--db_path", default=None)
-        parser.add_argument("--file_glob", default=None)
-        parser.add_argument("--workers", default=None)
-        parser.add_argument("--log_level", default=None)
-        parser.add_argument("--hoplite_log_level", default=None)
-        parser.add_argument("--tf_log_level", default=None)
-        parser.add_argument("--log_file", default=None)
+        parser = get_parser()
         args = parser.parse_args([
+            "analyze",
             "--source", str(source),
             "--output", str(output),
             "--embed", "parquet-columns,csv",
@@ -59,7 +46,9 @@ class TestCLIArgsToConfig:
             "--tf_log_level", "error",
             "--log_file", "/tmp/test.log",
         ])
-        config = load_config(config_path=None, args=args)
+        # Filter out argparse-specific fields (command, func)
+        config_args = argparse.Namespace(**{k: v for k, v in vars(args).items() if k not in ('command', 'func')})
+        config = load_config(config_args.config_file, config_args)
 
         # Paths
         assert config["source"] == source
@@ -94,46 +83,15 @@ class TestCLIArgsToConfig:
         assert config["tf_log_level"] == "ERROR"
         assert config["log_file"] == "/tmp/test.log"
 
-    def test_bare_embed_flag_defaults_to_parquet(self, tmp_path):
-        """--embed with no value resolves to parquet-serialized."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        args = argparse.Namespace(
-            embed=True, classify=None,
-            source=str(source), output=str(output),
-            model_choice=None, embedding_table_format=None,
-        )
-        config = load_config(config_path=None, args=args)
-        assert len(config["embed"]) == 1
-        assert config["embed"][0].filetype == "parquet"
-        assert config["embed"][0].table_format == "serialized"
-
-
-    def test_no_flags_produces_error(self, tmp_path):
-        """No --embed or --classify flags: load_config should raise ValueError."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        args = argparse.Namespace(
-            embed=None, classify=None,
-            source=str(source), output=str(output),
-            model_choice=None, embedding_table_format=None,
-        )
-        with pytest.raises(ValueError, match="At least one of"):
-            load_config(config_path=None, args=args)
-
-
 # ---------------------------------------------------------------------------
 # main() dispatch
 # ---------------------------------------------------------------------------
 
 class TestMainDispatch:
-    """Test main() dispatches to embed() and handles errors."""
+    """
+    Test main() dispatches to embed() and handles errors.
+    This tests that the main flow of the app is correct up to calling embed() with minimal arguments
+    """
 
     @patch("src.app.embed")
     def test_calls_embed_when_flag_set(self, mock_embed, tmp_path):
@@ -149,64 +107,6 @@ class TestMainDispatch:
         config = mock_embed.call_args[0][0]
         assert config["embed"][0].filetype == "parquet"
 
-    @patch("src.app.embed")
-    def test_skips_embed_when_no_flag(self, mock_embed, tmp_path):
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        # No --embed or --classify should error during config validation
-        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output)]):
-            with pytest.raises(ValueError, match="At least one of"):
-                main()
-        mock_embed.assert_not_called()
-
-    @patch("src.app.embed")
-    def test_embed_none_disables(self, mock_embed, tmp_path):
-        """--embed none disables embedding. Without --classify, config validation should error."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed", "none"]):
-            with pytest.raises(ValueError, match="At least one of"):
-                main()
-        mock_embed.assert_not_called()
-
-    @patch("src.app.embed")
-    def test_embed_false_disables(self, mock_embed, tmp_path):
-        """--embed false disables embedding. Without --classify, config validation should error."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--embed", "false"]):
-            with pytest.raises(ValueError, match="At least one of"):
-                main()
-        mock_embed.assert_not_called()
-
-    @patch("src.app.embed")
-    def test_config_file_used(self, mock_embed, tmp_path):
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        config_file = tmp_path / "config.yml"
-        config_file.write_text(
-            f"source: {source}\noutput: {output}\nembed: parquet-columns\n"
-        )
-
-        with patch("sys.argv", ["app", "analyze", "--config_file", str(config_file)]):
-            main()
-
-        config = mock_embed.call_args[0][0]
-        assert config["embed"][0].filetype == "parquet"
-        assert config["embed"][0].table_format == "columns"
-
 
 # ---------------------------------------------------------------------------
 # Exit codes
@@ -214,18 +114,6 @@ class TestMainDispatch:
 
 class TestExitCodes:
     """Test that errors produce correct exit codes."""
-
-    def test_no_embed_or_classify_exits_1(self, tmp_path):
-        """Config validation should error when neither --embed nor --classify is specified."""
-        source = tmp_path / "input"
-        source.mkdir()
-        output = tmp_path / "output"
-        output.mkdir()
-
-        # No --embed or --classify flag
-        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output)]):
-            with pytest.raises(ValueError, match="At least one of"):
-                main()
 
     @patch("src.app.embed", side_effect=MemoryError("OOM"))
     def test_memory_error_exits_137(self, mock_embed, tmp_path):
@@ -251,15 +139,6 @@ class TestExitCodes:
                 main()
             assert exc_info.value.code == 1
 
-    def test_missing_source_raises_before_embed(self, tmp_path):
-        """Invalid paths are caught during config loading, not embed."""
-        output = tmp_path / "output"
-        output.mkdir()
-
-        with patch("sys.argv", ["app", "analyze", "--source", "/nonexistent/path", "--output", str(output), "--embed"]):
-            with pytest.raises(FileNotFoundError, match="Source path"):
-                main()
-
 
 # ---------------------------------------------------------------------------
 # Module-level behavior
@@ -283,10 +162,10 @@ class TestModuleLevel:
 class TestVersionCommand:
 
     def test_version_prints_and_exits(self, capsys):
-        from unittest.mock import patch
-        import os
-        import importlib
         with patch.dict(os.environ, {"APP_VERSION": "dev"}):
+            # src.version reads APP_VERSION at import time, and src.app imports
+            # that module-level value. Reload both inside this context so the
+            # command reflects the patched environment.
             import src.version
             importlib.reload(src.version)
             import src.app
@@ -299,16 +178,6 @@ class TestVersionCommand:
         assert "perch-hoplite" in output
         assert "perch_8" in output
         assert "perch_v2" in output
-
-    def test_version_does_not_call_embed(self, capsys):
-        with patch("sys.argv", ["app", "version"]), patch("src.app.embed") as mock_embed:
-            main()
-        mock_embed.assert_not_called()
-
-    def test_version_skips_config_loading(self):
-        with patch("sys.argv", ["app", "version"]), patch("src.app.load_config") as mock_config:
-            main()
-        mock_config.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -325,22 +194,19 @@ class TestConfigCommand:
         printed = json.loads(output)
         assert printed == default_config
 
-    def test_config_does_not_call_embed(self):
-        with patch("sys.argv", ["app", "config"]), patch("src.app.embed") as mock_embed:
-            main()
-        mock_embed.assert_not_called()
-
-    def test_config_skips_config_loading(self):
-        with patch("sys.argv", ["app", "config"]), patch("src.app.load_config") as mock_config:
-            main()
-        mock_config.assert_not_called()
-
 
 # ---------------------------------------------------------------------------
 # Network blocking
 # ---------------------------------------------------------------------------
 
 class TestNetworkBlocking:
+
+    """
+    The app itself does not block network, but our pytest fixtures do block the network to ensure that models that
+    should be caches are actually cached. 
+
+    This test simply checks that that network blocking during testing is working. 
+    """
 
     def test_network_is_blocked_by_default(self):
         """Verify the autouse _block_network fixture is active."""
@@ -351,5 +217,5 @@ class TestNetworkBlocking:
     def test_download_blocked_in_tests(self):
         """Verify that kagglehub downloads fail for uncached models due to network blocking."""
         import kagglehub
-        with pytest.raises(ConnectionError, match="Network access blocked"):
+        with pytest.raises(requests.exceptions.ConnectionError, match="Network access blocked in tests. Models must be pre-cached."):
             kagglehub.model_download("google/bird-vocalization-classifier/tensorFlow2/bird-vocalization-classifier/999")
