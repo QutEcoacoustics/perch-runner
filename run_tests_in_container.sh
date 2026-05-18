@@ -12,6 +12,8 @@ set -euo pipefail
 
 IMAGE="${IMAGE:-qutecoacoustics/perchrunner:latest}"
 
+echo "Using Docker image: $IMAGE"
+
 exec docker run --rm --network=none \
   --entrypoint /app/tests/run_tests \
   "$IMAGE" \

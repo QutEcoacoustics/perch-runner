@@ -11,4 +11,6 @@ set -euo pipefail
 IMAGE="${IMAGE:-qutecoacoustics/perchrunner:latest}"
 export IMAGE
 
+echo "Using Docker image: $IMAGE"
+
 python -m pytest tests/integration -v "$@"
