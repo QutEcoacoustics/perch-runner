@@ -1,12 +1,16 @@
 Test layout overview
 
-- `tests/app_tests/`
-  - Unit and integration-style tests for application modules (`src/*`).
-  - Includes fast mocked tests and slower real-model integration tests.
+- `tests/unit_tests/`
+  - Unit tests for single functions/modules.
+  - Typically fast and mock-heavy.
 
-- `tests/integration/`
+- `tests/integration_tests/`
+  - Multi-step integration tests for application modules (`src/*`).
+  - Includes component-level tests with real side effects (for example, writing outputs).
+
+- `tests/end_to_end_tests/`
   - End-to-end CLI tests.
-  - These invoke the container via `docker run` from host-side pytest.
+  - These invoke the app via subprocess and (from host) via `docker run`.
 
 - `tests/files/`
   - Shared fixture assets (audio samples, fixture embeddings, configs).
@@ -26,6 +30,8 @@ Running tests
 
 - Against built image from host:
   - `./run_tests.sh`
+  - Runs end-to-end tests only (`tests/end_to_end_tests`).
 
-- From host, run full suite inside built image:
+- Against built image from host (inside container):
   - `./run_tests_in_container.sh`
+  - Runs unit, integration, and end-to-end tests inside the built image.

@@ -408,21 +408,40 @@ class TestLoadConfig:
         with pytest.raises(FileNotFoundError, match="Output path"):
             load_config(config_path=str(config_file))
 
-    def test_no_embed_or_classify_raises(self, tmp_dirs):
-        """Validation lives in config layer: both actions missing should raise."""
+    def test_no_embed_or_classify_or_save_db_raises(self, tmp_dirs):
+        """Validation lives in config layer: all actions missing should raise."""
         source, output = tmp_dirs
 
         args = argparse.Namespace(
             embed=None,
             classify=None,
+            save_db=None,
             source=str(source),
             output=str(output),
             model_choice=None,
             embedding_table_format=None,
         )
 
-        with pytest.raises(ValueError, match="At least one of --embed or --classify"):
+        with pytest.raises(ValueError, match="At least one of --embed, --classify, or --save_db"):
             load_config(config_path=None, args=args)
+
+    def test_save_db_true_without_embed_is_valid(self, tmp_dirs):
+        """--save_db true without --embed should be valid."""
+        source, output = tmp_dirs
+
+        args = argparse.Namespace(
+            embed=None,
+            classify=None,
+            save_db=True,
+            source=str(source),
+            output=str(output),
+            model_choice=None,
+            embedding_table_format=None,
+        )
+
+        config = load_config(config_path=None, args=args)
+        assert config['save_db'] is True
+        assert config['embed'] == []
 
     def test_embed_false_string_with_classify_enabled(self, tmp_dirs):
         """--embed false --classify parquet should work (classify is enabled)."""
@@ -455,7 +474,7 @@ class TestLoadConfig:
             embedding_table_format=None,
         )
 
-        with pytest.raises(ValueError, match="At least one of --embed or --classify"):
+        with pytest.raises(ValueError, match="At least one of --embed, --classify, or --save_db"):
             load_config(config_path=None, args=args)
 
     def test_embed_none_string_and_classify_none_string_raises(self, tmp_dirs):
@@ -471,7 +490,7 @@ class TestLoadConfig:
             embedding_table_format=None,
         )
 
-        with pytest.raises(ValueError, match="At least one of --embed or --classify"):
+        with pytest.raises(ValueError, match="At least one of --embed, --classify, or --save_db"):
             load_config(config_path=None, args=args)
 
     def test_embed_cross_product_via_load_config(self, make_config):

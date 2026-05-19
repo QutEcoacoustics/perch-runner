@@ -40,8 +40,9 @@
 		"vscode": {
 			"settings": {
 				"python.testing.pytestArgs": [
-					"tests/app_tests",
-					"tests/integration"
+					"tests/unit_tests",
+					"tests/integration_tests",
+					"tests/end_to_end_tests"
 				]
 			},
 			"extensions": [

@@ -32,7 +32,7 @@ def test_embed_config_full_pipeline_to_parquet(workspace):
     }
     embed.embed(config)
 
-    parquet_path = output / "embeddings" / "one" / "100sec.wav" / "embeddings.parquet"
+    parquet_path = output / "one" / "100sec.wav" / "embeddings.parquet"
     assert parquet_path.exists()
 
     df = pd.read_parquet(parquet_path)

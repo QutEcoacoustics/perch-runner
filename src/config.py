@@ -45,6 +45,7 @@ default_classify_format = "csv"
 default_config = {
     "embed": False,
     "classify": False,
+    "save_db": False,
     "model_choice": "perch_v2",
     "source": "/mnt/input",
     "output": "/mnt/output",
@@ -401,9 +402,10 @@ def load_config(config_path=None, args=None):
         # Default behavior when neither explicit template nor type is provided.
         config["embeddings_output_path_template"] = DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
 
-    # Normalize embed/classify: bool-like strings → True/False, True → default format
+    # Normalize embed/classify/save_db: bool-like strings → True/False, True → default format
     config['embed'] = normalize_bool_string(config['embed'])
     config['classify'] = normalize_bool_string(config['classify'])
+    config['save_db'] = normalize_bool_string(config.get('save_db', False))
 
     if config['embed'] is True:
         config['embed'] = default_embed_format  
@@ -426,6 +428,10 @@ def load_config(config_path=None, args=None):
         )
 
     config['classify'] = validate_value(config, 'classify') if config['classify'] else set()
+
+    # Validate that at least one output action is specified
+    if not config['embed'] and not config['classify'] and not config['save_db']:
+        raise ValueError("At least one of --embed, --classify, or --save_db must be specified.")
 
     # Normalize file_glob: falsy strings → None (triggers auto-detection)
     glob_val = normalize_bool_string(config.get('file_glob'))
@@ -468,10 +474,6 @@ def load_config(config_path=None, args=None):
     config['output'] = Path(config['output'])
     if not config['output'].exists():
         raise FileNotFoundError(f"Output path {config['output']} does not exist.")
-
-    # Validate that at least one action is specified
-    if not config['embed'] and not config['classify']:
-        raise ValueError("At least one of --embed or --classify must be specified.")
 
     return config
   

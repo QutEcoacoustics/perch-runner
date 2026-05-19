@@ -34,7 +34,7 @@ def handle_analyze(args):
 
         log.info("Starting perch-runner version %s", __version__)
 
-        if config['embed']:
+        if config['embed'] or config['save_db']:
             log.info("Embed requested using model: %s", config['model_choice'])
             embed(config)
 
@@ -99,6 +99,7 @@ def get_parser():
         help="preset output path type: flat_basename, nested_basename, nested, flat",
     )
     analyze_parser.add_argument("--db_path", default=None, help="database output path. Relative paths are resolved under --output (default: db)")
+    analyze_parser.add_argument("--save_db", nargs='?', const=True, default=None, help="save the hoplite database after processing. Use --save_db with no value to enable (default: false)")
     analyze_parser.add_argument("--file_glob", default=None, help="glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified.")
     analyze_parser.add_argument("--workers", default=None, help="number of worker threads for embedding, or 'auto' (default) to choose based on available RAM.")
     analyze_parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)")

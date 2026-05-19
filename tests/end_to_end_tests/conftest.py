@@ -5,8 +5,38 @@ from pathlib import Path
 
 import pytest
 
+# This conftest.py provides fixtures for end-to-end tests of the CLI.
+# depending on the 
+_CONTAINER_TEST_FILES = Path("/app/tests/files")
+_HOST_TEST_FILES = Path(__file__).parents[2] / "tests" / "files"
+CANONICAL_TEST_FILES = _CONTAINER_TEST_FILES if _CONTAINER_TEST_FILES.exists() else _HOST_TEST_FILES
 
-FIXTURES_DIR = Path("tests/files")
+
+def _run_command(cmd, description="Command", **subprocess_kwargs):
+    """Run a command via subprocess and check for errors.
+    
+    Args:
+        cmd: List of command arguments to run
+        description: Prefix for error messages
+        **subprocess_kwargs: Additional kwargs to pass to subprocess.run()
+    
+    Returns:
+        CompletedProcess result
+    """
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        **subprocess_kwargs
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"{description} failed (exit {result.returncode}):\n"
+            f"  cmd: {' '.join(str(x) for x in cmd)}\n"
+            f"  stdout: {result.stdout}\n"
+            f"  stderr: {result.stderr}"
+        )
+    return result
 
 
 def _in_container() -> bool:
@@ -16,14 +46,19 @@ def _in_container() -> bool:
 
 @pytest.fixture
 def workspace(tmp_path):
-    """Provides source/output/config dirs in a temp location (auto-cleaned by pytest)."""
+    """
+    Provides fresh input/output/config dirs for each test, copying canonical test files from /app/tests/files.
+    - source: temp input dir (test can copy needed files from CANONICAL_TEST_FILES)
+    - output: temp output dir
+    - config: temp config dir
+    """
     source = tmp_path / "input"
     source.mkdir()
     output = tmp_path / "output"
     output.mkdir()
     config = tmp_path / "config"
     config.mkdir()
-    return source, output, config
+    return source, output, config, CANONICAL_TEST_FILES
 
 
 @pytest.fixture
@@ -52,21 +87,12 @@ def _subprocess_runner():
         env = dict(os.environ)
         env["PYTHONPATH"] = str(Path.cwd())
 
-        result = subprocess.run(
+        return _run_command(
             cmd,
-            capture_output=True,
-            text=True,
+            description="Subprocess command",
             cwd=str(Path.cwd()),
             env=env,
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Command failed (exit {result.returncode}):\n"
-                f"  cmd: {' '.join(cmd)}\n"
-                f"  stdout: {result.stdout}\n"
-                f"  stderr: {result.stderr}"
-            )
-        return result
     return _run
 
 
@@ -92,17 +118,8 @@ def _docker_runner():
         cmd_args += list(extra_args)
 
         command = ["docker", "run", "--rm", "--network=none"] + mounts + [image, "analyze"] + cmd_args
-        result = subprocess.run(
+        return _run_command(
             command,
-            capture_output=True,
-            text=True,
+            description="Docker command",
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Docker command failed (exit {result.returncode}):\n"
-                f"  cmd: {' '.join(command)}\n"
-                f"  stdout: {result.stdout}\n"
-                f"  stderr: {result.stderr}"
-            )
-        return result
     return _run

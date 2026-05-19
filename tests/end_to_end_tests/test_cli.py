@@ -17,7 +17,6 @@ import pytest
 from src import data_frames
 
 
-FIXTURES_DIR = Path("tests/files")
 A2O_FLAC = "20220502T075930+1000_Minjerribah-Dry-B_1088507.flac"
 
 
@@ -25,14 +24,14 @@ class TestEmbedCLI:
 
     def test_embed_nested_wav(self, runner, workspace):
         """Basic: wav in a subdirectory, default --embed."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         site = source / "deploy1"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
 
         runner(source, output, "--embed")
 
-        parquet = output / "embeddings" / "deploy1" / "100sec.wav" / "embeddings.parquet"
+        parquet = output / "deploy1" / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
         df = pd.read_parquet(parquet)
         assert len(df) >= 19
@@ -41,12 +40,12 @@ class TestEmbedCLI:
 
     def test_embed_flat_source(self, runner, workspace):
         """Audio at root level, no subdirectory."""
-        source, output, _ = workspace
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", source)
+        source, output, _, test_files = workspace
+        shutil.copy(test_files / "audio" / "100sec.wav", source)
 
         runner(source, output, "--embed")
 
-        parquet = output / "embeddings" / "100sec.wav" / "embeddings.parquet"
+        parquet = output / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
         df = pd.read_parquet(parquet)
         assert len(df) >= 19
@@ -54,14 +53,14 @@ class TestEmbedCLI:
 
     def test_embed_a2o_flac(self, runner, workspace):
         """A2O-style FLAC in a site subdirectory."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         site = source / "Minjerribah-Dry-B"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / A2O_FLAC, site)
+        shutil.copy(test_files / "audio" / A2O_FLAC, site)
 
         runner(source, output, "--embed")
 
-        parquet = output / "embeddings" / "Minjerribah-Dry-B" / A2O_FLAC / "embeddings.parquet"
+        parquet = output / "Minjerribah-Dry-B" / A2O_FLAC / "embeddings.parquet"
         assert parquet.exists()
         df = pd.read_parquet(parquet)
         assert len(df) >= 6
@@ -69,14 +68,14 @@ class TestEmbedCLI:
 
     def test_embed_columns_format(self, runner, workspace):
         """--embed parquet --embedding_table_format columns produces column-per-dimension."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         site = source / "site"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
 
         runner(source, output, "--embed", "parquet", "--embedding_table_format", "columns")
 
-        parquet = output / "embeddings" / "site" / "100sec.wav" / "embeddings.parquet"
+        parquet = output / "site" / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
         df = pd.read_parquet(parquet)
         assert "f0000" in df.columns
@@ -84,10 +83,10 @@ class TestEmbedCLI:
 
     def test_embed_with_config_file(self, runner, workspace):
         """Config file specifies embed format."""
-        source, output, config_dir = workspace
+        source, output, config_dir, test_files = workspace
         site = source / "site"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
 
         config_file = config_dir / "config.yml"
         config_file.write_text(
@@ -96,46 +95,48 @@ class TestEmbedCLI:
 
         runner(source, output, config_file=config_file)
 
-        parquet = output / "embeddings" / "site" / "100sec.wav" / "embeddings.parquet"
+        parquet = output / "site" / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
 
     def test_embed_with_file_glob(self, runner, workspace):
         """Explicit --file_glob overrides auto-detection."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         # Two levels deep
         deep = source / "site" / "date"
         deep.mkdir(parents=True)
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", deep)
+        shutil.copy(test_files / "audio" / "100sec.wav", deep)
 
         runner(source, output, "--embed", "--file_glob", "*/*/*")
 
-        parquet = output / "embeddings" / "site" / "date" / "100sec.wav" / "embeddings.parquet"
+        parquet = output / "site" / "date" / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
 
     def test_no_embed_flag_errors(self, runner, workspace):
         """Without --embed/--classify, CLI should fail validation."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         site = source / "site"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
 
-        with pytest.raises(RuntimeError, match="At least one of --embed or --classify"):
+        with pytest.raises(RuntimeError, match="At least one of --embed, --classify, or --save_db"):
             runner(source, output)
 
-        assert not (output / "embeddings").exists()
-        assert not (output / "hoplite").exists()
+        # Verify nothing was created in the output directory
+        assert not list(output.glob("**/*.parquet"))
 
     def test_embed_writes_db_at_default_path(self, runner, workspace):
         """Embedding writes the database to output/db by default."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         site = source / "site"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
 
-        runner(source, output, "--embed", "parquet")
+        runner(source, output, "--embed", "parquet", "--save_db")
 
         assert (output / "db").exists()
-        assert (output / "embeddings").exists()
+        # Verify embeddings were created at the default path
+        parquet = output / "site" / "100sec.wav" / "embeddings.parquet"
+        assert parquet.exists()
 
 
 # Import model metadata from source of truth
@@ -148,14 +149,14 @@ class TestEmbedCLIModels:
     @pytest.mark.parametrize("model_choice", MODELS.keys(), ids=MODELS.keys())
     def test_embed_model(self, runner, workspace, model_choice):
         """Embed with each model, verify parquet output."""
-        source, output, _ = workspace
+        source, output, _, test_files = workspace
         site = source / "site"
         site.mkdir()
-        shutil.copy(FIXTURES_DIR / "audio" / "100sec.wav", site)
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
 
         runner(source, output, "--embed", "--model_choice", model_choice)
 
-        parquet = output / "embeddings" / "site" / "100sec.wav" / "embeddings.parquet"
+        parquet = output / "site" / "100sec.wav" / "embeddings.parquet"
         assert parquet.exists()
         df = pd.read_parquet(parquet)
         assert len(df) >= 19

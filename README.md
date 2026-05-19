@@ -11,7 +11,7 @@ docker run --rm \
   qutecoacoustics/perchrunner:latest analyze --embed
 ```
 
-This processes all audio files in `/path/to/audio` and writes Parquet embedding files to `/path/to/output/embeddings/`.
+This processes all audio files in `/path/to/audio` and writes Parquet embedding files to `/path/to/output/`.
 
 ## Usage
 
@@ -42,6 +42,7 @@ docker run --rm \
 | `--embeddings_output_path_template` | Output path template tokens: `{parents}`, `{basename}`, `{ext}`, `{embedding_table_format}`, `{analysis}` | `{parents}/{basename}/embeddings{ext}` |
 | `--embeddings_output_path_type` | Preset output layout: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
+| `--save_db` | Persist the hoplite embedding database. Use --save_db with no value to enable (default: false) | `false` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
 | `--workers` | Worker count or `auto` | `auto` |
 | `--log_level` | App log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | `INFO` |
@@ -51,6 +52,162 @@ docker run --rm \
 | `--config_file` | Path to a YAML config file | None |
 | `--source` | Override source path (default: `/mnt/input`) | `/mnt/input` |
 | `--output` | Override output path (default: `/mnt/output`) | `/mnt/output` |
+
+### Analyze Option Details
+
+#### --embed [format]
+
+Controls embedding export outputs.
+
+- `--embed` with no value defaults to `parquet`.
+- in the format `<filetype>` or `<filetype>-<table_format_type>`
+- Accepted filetypes are `parquet` and `csv`.
+- You can specify values as:
+  - filetype only: `parquet`, `csv`
+  - filetype with explicit table format: `parquet-serialized`, `parquet-columns`, `csv-serialized`, `csv-columns`
+- Multiple values can be comma-separated, for example:
+  - `--embed parquet,csv`
+  - `--embed parquet-columns,csv-serialized`
+
+How filetype-only values expand:
+
+- If you set `--embedding_table_format serialized` (default), `parquet` becomes `parquet-serialized`.
+- If you set `--embedding_table_format columns`, `parquet` becomes `parquet-columns`.
+- If you set `--embedding_table_format serialized,columns`, `parquet` expands to both table formats.
+
+#### --embedding_table_format
+
+Controls table layout for embed outputs that do not explicitly include a table format.
+
+- Allowed values: `serialized`, `columns`
+- Multiple values allowed, comma-separated.
+
+What they mean:
+
+- `serialized`: one `embeddings` column containing a serialized vector per row.
+- `columns`: one column per embedding dimension (`f0000`, `f0001`, ...).
+
+#### --file_glob
+
+Selects which audio files under source directory are embedded.
+
+- If provided, it is used directly (examples: `*`, `*/*`, `*/*/*`).
+- If omitted or false-like, it is auto-detected.
+- recursive globbing is not possible, due to how perch-hoplite works
+- This is ignored if the source points to a single file
+
+Auto-detection behavior:
+
+- The runner scans audio files recursively.
+- It chooses a glob depth based on the shallowest audio file found:
+  - top-level audio file -> `*`
+  - one level deep -> `*/*`
+  - two levels deep -> `*/*/*`
+- Deeper files than the chosen depth are skipped.
+- A warning is logged when deeper files are skipped.
+
+Special case:
+
+- If `--source` points to a single audio file, only that file is embedded (internally using the filename as the glob).
+
+#### --embeddings_output_path_template
+
+For the tabular (e.g. parquet) outputting of embeddings, you can specify where they are saved within `<output>/`
+using a template.
+
+- Supported tokens: 
+  - `{parents}` the parent directories of the audio file, relative to the source directory
+  - `{basename}` the basename of the audio file, without the extension
+  - `{ext}` the extension of the output format, e.g. parquet,csv
+  - `{embedding_table_format}` the table format e.g. serialized or columns
+  - `{analysis}` the analysis e.g. embed
+- Must be a relative path.
+- Must not contain `..` path traversal.
+
+Examples:
+
+- `{parents}/{basename}/embeddings{ext}` (default)
+- `{parents}/{basename}/{embedding_table_format}/embeddings{ext}`
+
+If exporting both parquet table formats, include `{embedding_table_format}` in the template to avoid path collisions.
+
+If more than one source audio files map to the same output file, they will all be included in the same output file.
+
+#### --embeddings_output_path_type
+
+Preset output paths (mutually exclusive with `--embeddings_output_path_template`):
+
+- `flat_basename` -> `{basename}{ext}`
+- `nested_basename` -> `{parents}/{basename}{ext}`
+- `nested` -> `{parents}/{basename}{ext}`
+- `flat` -> `embeddings{ext}` (this puts all recordings' embeddings in the same embeddings.parquet file)
+
+#### --db_path
+
+Location for the internal embedding database.
+
+- Relative paths are resolved under `--output`.
+- Default is `db`, which resolves to `<output>/db`.
+
+#### --save_db
+
+Controls whether the hoplite embedding database is saved after processing.
+
+- Behavior:
+  - `--save_db true` (or `--save_db` with no value): Database is saved at the location specified by `--db_path`.
+  - `--save_db false` (default): If the database folder specified by `--db_path` already exists, it is preserved and used. If the folder does not exist, a temporary database is created, used for exports, and then deleted.
+- Validation:
+  - At least one of `--embed`, `--classify`, or `--save_db` must be specified.
+  - You can specify `--save_db true` without `--embed` to create and save only the database.
+
+Usage examples:
+
+- DB only: `analyze --save_db` (creates and saves the database, no embeddings exported)
+- Embeddings only: `analyze --embed parquet` (creates embeddings, database is deleted after)
+- Both: `analyze --embed parquet --save_db` (creates embeddings, saves database)
+
+#### --workers
+
+Controls embedding worker count passed to perch-hoplite
+
+- `auto` (default): computed from available RAM.
+- Integer value: explicit worker count. 
+
+#### --classify [format]
+
+Classification output selector.
+
+- Allowed values: `parquet`, `csv`, `hoplite`
+- `--classify` with no value defaults to `csv`
+- Classification pipeline is currently not implemented.
+
+#### --model_choice
+
+Embedding model preset.
+
+- Allowed values: `perch_v2`, `perch_8`
+
+#### --source and --output
+
+Input and output roots.
+
+- Both paths must already exist and mounted into the container.
+- Source can be a directory or a single audio file.
+
+#### --config_file
+
+Path to config file (`.yml`, `.yaml`, or `.json`).
+
+- CLI flags override values loaded from config file.
+
+#### --log_level, --hoplite_log_level, --tf_log_level, --log_file
+
+Logging controls.
+
+- `--log_level`: perch-runner logs.
+- `--hoplite_log_level`: library/root logs.
+- `--tf_log_level`: TensorFlow C++ logs.
+- `--log_file`: optional file output in addition to console.
 
 ### Supported Audio Formats
 
@@ -62,13 +219,12 @@ Audio files are discovered relative to the source directory. Output mirrors that
 
 ```
 /mnt/output/
-  embeddings/
-    site1/
-      recording.wav/
-        embeddings.parquet
-    site2/
-      another.flac/
-        embeddings.parquet
+  site1/
+    recording.wav/
+      embeddings.parquet
+  site2/
+    another.flac/
+      embeddings.parquet
 ```
 
 Each Parquet file contains one row per 5-second window with columns: `source`, `channel`, `offset`, `embeddings` (serialized numpy array).
@@ -137,14 +293,25 @@ pytest
 ./run_tests_in_container.sh
 ```
 
+or just paste:
+
 ```bash
-# run integration tests only, on the host
+IMAGE="${IMAGE:-qutecoacoustics/perchrunner:latest}"
+docker run --rm --network=none --entrypoint /app/tests/run_tests "$IMAGE"
+```
+
+
+#### end-to-end tests from host
+
+```bash
+# run end-to-end tests only, on the host
 ./run_tests.sh
 ```
 
-This runs host integration tests in `tests/integration`, which execute the built
-container via `docker run` and validate produced outputs.  Requires pytest to be
-installed on the host environment. 
+This runs host end-to-end tests in `tests/end_to_end_tests`, which execute the built
+container via `docker run` and validate produced outputs on the host. 
+Requires pytest and other python libraries to be installed on the host environment (see requirements-host.txt).  
+It must be run from the root of the repo for test discovery and accessing the test files. 
 
 
 ## License

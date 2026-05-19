@@ -223,6 +223,64 @@ class TestEmbedDbPath:
         _, kwargs = mock_export.call_args
         assert kwargs["db_path"] == Path(tmp_path) / "custom_db"
 
+    def test_preexisting_db_not_deleted_when_save_db_false(self, tmp_path, caplog):
+        """Pre-existing DB is preserved even when save_db=false."""
+        config = self._make_embed_config(
+            tmp_path,
+            [EmbeddingsFormat("parquet", "serialized")],
+            db_path=Path(tmp_path) / "mydb",
+        )
+        config["save_db"] = False
+
+        # Create a pre-existing DB directory
+        db_path = Path(config["db_path"])
+        db_path.mkdir(parents=True, exist_ok=True)
+        marker_file = db_path / "marker.txt"
+        marker_file.write_text("pre-existing")
+
+        with mock.patch("src.embed.create_database", return_value=100.0), \
+             mock.patch("src.embed.export_embeddings_table"), \
+             mock.patch("src.embed.log_ram"):
+            import logging
+            with caplog.at_level(logging.INFO, logger="src.embed"):
+                embed.embed(config)
+
+        # Verify DB still exists
+        assert db_path.exists(), "Pre-existing DB was deleted!"
+        assert marker_file.exists(), "Pre-existing DB marker file was deleted!"
+        # Verify info message was logged
+        assert any("Preserving pre-existing database" in r.message for r in caplog.records)
+
+    def test_newly_created_db_deleted_when_save_db_false(self, tmp_path, caplog):
+        """Newly created DB is deleted when save_db=false."""
+        config = self._make_embed_config(
+            tmp_path,
+            [EmbeddingsFormat("parquet", "serialized")],
+            db_path=Path(tmp_path) / "newdb",
+        )
+        config["save_db"] = False
+
+        # Verify DB doesn't exist before
+        db_path = Path(config["db_path"])
+        assert not db_path.exists()
+
+        # Mock create_database to create the DB directory
+        def mock_create_db(cfg):
+            Path(cfg["db_path"]).mkdir(parents=True, exist_ok=True)
+            return 100.0
+
+        with mock.patch("src.embed.create_database", side_effect=mock_create_db), \
+             mock.patch("src.embed.export_embeddings_table"), \
+             mock.patch("src.embed.log_ram"):
+            import logging
+            with caplog.at_level(logging.INFO, logger="src.embed"):
+                embed.embed(config)
+
+        # Verify DB was deleted
+        assert not db_path.exists(), "Newly created DB was not deleted!"
+        # Verify info message was logged
+        assert any("Cleaning up database" in r.message for r in caplog.records)
+
 
 # ---------------------------------------------------------------------------
 # embed() — format dispatch
