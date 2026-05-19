@@ -21,7 +21,7 @@ for arg in "$@"; do
 done
 
 # Default version to timestamp if not provided
-VERSION=${VERSION:-$(date '+%Y%m%d%H%M%S')_$(git rev-parse --short HEAD)}
+VERSION=${VERSION:-V2_$(date '+%Y%m%d%H%M%S')_$(git rev-parse --short HEAD)}
 tag=qutecoacoustics/perchrunner
 
 echo "Mode: $( [ "$PUSH" = true ] && echo 'RELEASE' || echo 'BUILD' )"
