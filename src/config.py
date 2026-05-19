@@ -1,67 +1,482 @@
-"""
-Parsing config files. 
-def load_config(yml_source):
-Only one config file can be specified to the public function load_config.
-This config file can inherit from other config files, if they have the key 'inherit' with the value of the path to that parent config
-"""
+"""Parsing config files."""
 
+import json
+import re
+import warnings
 import yaml
 from pathlib import Path
-from ml_collections import config_dict
+from dataclasses import dataclass
+from typing import ClassVar
 
-config_locations = ['', './src/default_configs', Path.cwd()]
+from src.version import MODELS
 
-def resolve_source(source):
-
-    for loc in config_locations:
-        # print the contents of the directory loc
-        # print(f'checking {loc}:  {", ".join([str(entry.name) for entry in Path(loc).iterdir()])}')
-        joined = Path(loc) / Path(source)
-        if joined.exists():
-            return joined
-
-    raise FileNotFoundError(f'could not find {source} in {config_locations}. cwd is {Path.cwd()}')
+default_config_dir = "/mnt/config/"
 
 
-def parse_and_merge(yml_source, stack=None):
+valid_values = {
+    "model_choice": list(MODELS.keys()),
+    "embed": ["parquet","csv"],
+    "classify": ["parquet", "csv", "hoplite"],
+    "embedding_table_format": ["serialized", "columns"],
+    "embeddings_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
+}
+
+
+OUTPUT_PATH_TYPE_TEMPLATES = {
+    "flat_basename": "{basename}{ext}",
+    "nested_basename": "{parents}/{basename}{ext}",
+    "nested": "{parents}/{basename}{ext}",
+    "flat": "embeddings{ext}",
+}
+
+DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE = "{parents}/{basename}/embeddings{ext}"
+
+ALLOWED_OUTPUT_TEMPLATE_TOKENS = frozenset(
+    {"parents", "basename", "ext", "embedding_table_format", "analysis"}
+)
+
+_TEMPLATE_TOKEN_PATTERN = re.compile(r"\{([^{}]+)\}")
+
+# if embed or classify is set to True without a specified format
+# use these formats as the default
+default_embed_format = "parquet"
+default_classify_format = "csv"
+
+default_config = {
+    "embed": False,
+    "classify": False,
+    "save_db": False,
+    "model_choice": "perch_v2",
+    "source": "/mnt/input",
+    "output": "/mnt/output",
+    "embedding_table_format": "serialized",
+    "file_glob": None,
+    "dataset_name": "search_set",
+    "workers": "auto",
+    "db_path": "db",
+    "log_level": "INFO",
+    "hoplite_log_level": "WARNING",
+    "tf_log_level": "WARNING",
+    "log_file": None,
+    "embeddings_output_path_template": None,
+    "embeddings_output_path_type": None,
+}
+
+
+
+
+_FALSY_STRINGS = frozenset({"none", "false", "null", ""})
+_TRUTHY_STRINGS = frozenset({"true"})
+
+
+def normalize_bool_string(value):
+    """Normalize a value that may be a bool, None, or a bool-like string.
+
+    Returns True, False, or the original string (lowered) if it is not
+    a boolean-like token.
     """
-    load a yml file, check if it is supposed to inherit from anything, and if so load and merge the parent
-    this is done recursively. stack will keep track of everything loaded to ensure there is no circular reference
+    if value is None or value is False:
+        return False
+    if value is True:
+        return True
+    if isinstance(value, str):
+        lower = value.strip().lower()
+        if lower in _FALSY_STRINGS:
+            return False
+        if lower in _TRUTHY_STRINGS:
+            return True
+        return value  # a real format string like "parquet"
+    return value
+
+
+@dataclass
+class EmbeddingsFormat:
+    filetype: str = "parquet"
+    table_format: str = "serialized"
+
+    valid_filetypes: ClassVar[list[str]] = ["parquet", "csv"]
+    valid_table_formats: ClassVar[list[str]] = ["serialized", "columns"]
+
+    def __init__(self, filetype: str, table_format: str):
+        if filetype not in self.valid_filetypes:
+            raise ValueError(f"Invalid filetype: {filetype}. Valid options are: {self.valid_filetypes}")
+        if table_format not in self.valid_table_formats:
+            raise ValueError(f"Invalid table format: {table_format}. Valid options are: {self.valid_table_formats}")
+        self.filetype = filetype
+        self.table_format = table_format
+
+
+def _json_safe_value(value):
+    """Convert config values into JSON-serializable structures."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, EmbeddingsFormat):
+        return {
+            "filetype": value.filetype,
+            "table_format": value.table_format,
+        }
+    if isinstance(value, dict):
+        return {str(k): _json_safe_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(v) for v in value]
+    if isinstance(value, set):
+        return sorted(_json_safe_value(v) for v in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def config_to_json(config: dict, *, sort_keys: bool = True) -> str:
+    """Serialize a config dict to JSON with support for non-JSON config types."""
+    return json.dumps(_json_safe_value(config), sort_keys=sort_keys)
+
+
+def validate_embed_config(embed_config_val, fallback_table_formats):
+    """Parse embed config into a list of EmbeddingsFormat.
+
+    Items with an explicit format (e.g. "parquet-columns") keep that format.
+    Items without (e.g. "csv") get expanded across all fallback_table_formats.
     """
 
-    yml_source = resolve_source(yml_source)
+    embed_values = parse_list_values(embed_config_val)
+    results = []
+    for val in embed_values:
+        parts = val.split("-")
+        if len(parts) == 1:
+            results.extend([EmbeddingsFormat(filetype=val, table_format=tf) for tf in fallback_table_formats])
+        elif len(parts) == 2:
+            filetype, table_format = parts
+            results.append(EmbeddingsFormat(filetype=filetype, table_format=table_format))
+        else:
+            raise ValueError(f"Invalid embed config value: {val}. Must be filetype or in the format 'filetype-tableformat'")
+    return results
 
-    if stack is None:
-        stack = []
-    elif yml_source in stack:
-        raise ValueError(f'circular reference detected: {yml_source} in {stack}')
+
+def find_config():
+    """
+    looks for config.yml or config.json in the default config directory
+    if both are present, Raises an error. If neither are present, returns None
+    """
+
+    default_filenames  = ["config.yml", "config.yaml", "config.json"]
+    found_config = [Path(default_config_dir) / filename for filename in default_filenames if (Path(default_config_dir) / filename).exists()]
+    if len(found_config) > 1:
+        raise FileExistsError("Multiple config files are present in the default config directory.")
+    elif len(found_config) == 1:
+        return found_config[0]
+    else:
+        return None
+
+
+def parse_list_values(values):
+
+    # if it's a string
+    if isinstance(values, str):
+        values = [fmt.strip().lower() for fmt in values.split(",")]
+
+    if not isinstance(values, (list, tuple, set)):
+        raise ValueError(f"Invalid type: {type(values)}. Must be a string or a list.")
+
+    # deduplicate via set, then sort for deterministic ordering
+    values = sorted(set([fmt.strip().lower() for fmt in list(values)]))
+    return values
+
+
+def validate_value(config, key):
+    """
+    Validates that values in the config for a given key are in the allow-list of valid values.
+    Allows multiple values to be specified as a comma-separated string, which will be split and stripped before validation.
+    Normalizes values into a sorted list of unique lowercase strings for deterministic downstream processing.
+    """
+
+    values = config[key]
+    values = parse_list_values(values)
+    allowed_values = set(valid_values[key])
+
+    if any(fmt not in allowed_values for fmt in values):
+        raise ValueError(f"Invalid {key} format: {values}. Valid options are: {allowed_values}")
     
-    with open(yml_source, 'r') as f:
-        config = yaml.safe_load(f)
-        if config is None:
-            config = {}
+    return values
 
-    # if inherit is inside the config, load an merge the parent
-    if 'inherit' in config:
-        parent_path = config.pop('inherit')
-        parent_config = parse_and_merge(parent_path, stack + [yml_source])
-        config = {**parent_config, **config}
+
+def validate_single_value(value, key):
+    """Validate a single allow-listed value (not comma-separated list)."""
+    values = parse_list_values(value)
+    if len(values) != 1:
+        raise ValueError(f"{key} must be a single value, got: {values}")
+
+    single = values[0]
+    allowed_values = set(valid_values[key])
+    if single not in allowed_values:
+        raise ValueError(f"Invalid {key} value: {single}. Valid options are: {allowed_values}")
+
+    return single
+
+
+def validate_embeddings_output_path_template(template):
+    """Validate output path template token usage and basic path safety."""
+    if not isinstance(template, str):
+        raise ValueError("embeddings_output_path_template must be a string")
+
+    candidate = template.strip()
+    if not candidate:
+        raise ValueError("embeddings_output_path_template cannot be empty")
+
+    tokens = _TEMPLATE_TOKEN_PATTERN.findall(candidate)
+    invalid_tokens = [t for t in tokens if t not in ALLOWED_OUTPUT_TEMPLATE_TOKENS]
+    if invalid_tokens:
+        raise ValueError(
+            "Invalid token(s) in embeddings_output_path_template: "
+            f"{invalid_tokens}. Allowed tokens are: {sorted(ALLOWED_OUTPUT_TEMPLATE_TOKENS)}"
+        )
+
+    normalized = candidate.replace("\\", "/")
+    if normalized.startswith("/"):
+        raise ValueError("embeddings_output_path_template must be relative (absolute paths are not allowed)")
+
+    for part in Path(normalized).parts:
+        if part == "..":
+            raise ValueError("embeddings_output_path_template may not contain '..' path components")
+
+    return candidate
+
+
+def _ensure_relative_safe_path(path_obj):
+    """Reject absolute / traversal paths for relative output paths."""
+    if path_obj.is_absolute():
+        raise ValueError("Output path must be relative")
+    if any(part == ".." for part in path_obj.parts):
+        raise ValueError("Output path may not contain '..' path components")
+
+
+def render_embeddings_output_relative_path(
+        template,
+        audio_file,
+        output_ext,
+        embedding_table_format,
+        analysis,
+):
+    """Render a relative output path from template tokens.
+
+    Applies extension rules:
+    - If {ext} is absent: append extension.
+    - If rendered already ends with extension: keep it.
+    - If rendered has a mismatching hardcoded extension: warn and append.
+    """
+    template = validate_embeddings_output_path_template(template)
+    audio_rel = Path(audio_file)
+
+    _ensure_relative_safe_path(audio_rel)
+
+    parents = "" if audio_rel.parent == Path(".") else audio_rel.parent.as_posix()
+    basename = audio_rel.name
+    ext = output_ext if str(output_ext).startswith(".") else f".{output_ext}"
+
+    rendered = template
+    rendered = rendered.replace("{parents}", parents)
+    rendered = rendered.replace("{basename}", basename)
+    rendered = rendered.replace("{ext}", ext)
+    rendered = rendered.replace("{embedding_table_format}", str(embedding_table_format))
+    rendered = rendered.replace("{analysis}", str(analysis))
+
+    rendered = rendered.replace("\\", "/")
+    while "//" in rendered:
+        rendered = rendered.replace("//", "/")
+    rendered = rendered.lstrip("/")
+
+    if "{ext}" not in template:
+        if rendered.endswith(ext):
+            pass
+        else:
+            current_suffix = Path(rendered).suffix
+            if current_suffix and current_suffix != ext:
+                warnings.warn(
+                    "Template contains a hardcoded extension that does not match the "
+                    f"output type ({current_suffix} vs {ext}); appending correct extension.",
+                    UserWarning,
+                )
+            rendered = f"{rendered}{ext}"
+    else:
+        if not rendered.endswith(ext):
+            current_suffix = Path(rendered).suffix
+            if current_suffix and current_suffix != ext:
+                warnings.warn(
+                    "Template contains a hardcoded extension that does not match the "
+                    f"output type ({current_suffix} vs {ext}); appending correct extension.",
+                    UserWarning,
+                )
+            rendered = f"{rendered}{ext}"
+
+    rel_path = Path(rendered)
+    _ensure_relative_safe_path(rel_path)
+    return rel_path
+
+
+def ensure_output_path_within_root(relative_path, output_root):
+    """Ensure final output path remains inside output_root."""
+    rel_path = Path(relative_path)
+    _ensure_relative_safe_path(rel_path)
+
+    output_root = Path(output_root).resolve()
+    abs_path = (output_root / rel_path).resolve()
+    abs_path.relative_to(output_root)
+    return abs_path
+
+
+def load_config(config_path=None, args=None):
+    """
+    attemps to load a config file, either from the specified path or from the default config directory. 
+    """
+    if config_path is not None:
+        config_file = Path(config_path)
+        if not config_file.exists():
+            raise FileNotFoundError(f"Specified config file {config_file} does not exist.")
+    else:
+        config_file = find_config()
+
+
+    if config_file is not None:
+        # open and parse yaml or json config file
+        if config_file.suffix in ['.yml', '.yaml']:
+            with open(config_file, 'r') as f:
+                config = yaml.safe_load(f) or {}
+        elif config_file.suffix == '.json':
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+        else:
+            raise ValueError(f"Unsupported config file format: {config_file.suffix}")
+    else:
+        print("No config file found. Using default configuration.")
+        config = {}
+
+    # apply default config, giving precedence to the loaded config
+    config = {**default_config, **config}
+
+    # merge with command line args, giving precedence to command line args
+    if args is not None:
+        args_dict = vars(args)
+        # remove config-path from args_dict since it is not a config parameter
+        args_dict.pop('config_file', None)
+        config = {**config, **{k: v for k, v in args_dict.items() if v is not None}}
+
+    # allow only config keys that are in the default config
+    for key in config.keys():
+        if key not in default_config:
+            raise ValueError(f"Invalid config key: {key}. Allowed keys are: {list(default_config.keys())}")
+
+
+    # normalize optional templating values first
+    template_val = normalize_bool_string(config.get("embeddings_output_path_template"))
+    type_val = normalize_bool_string(config.get("embeddings_output_path_type"))
+    config["embeddings_output_path_template"] = None if template_val is False else template_val
+    config["embeddings_output_path_type"] = None if type_val is False else type_val
+
+    if config["embeddings_output_path_template"] and config["embeddings_output_path_type"]:
+        raise ValueError(
+            "embeddings_output_path_template and embeddings_output_path_type are mutually exclusive"
+        )
+
+    if "model_choice" in config:
+        config["model_choice"] = validate_single_value(
+            config["model_choice"],
+            "model_choice",
+        )
+
+    if "embedding_table_format" in config:
+        config["embedding_table_format"] = validate_value(config, "embedding_table_format")
+
+    if config["embeddings_output_path_type"] is not None:
+        config["embeddings_output_path_type"] = validate_single_value(
+            config["embeddings_output_path_type"],
+            "embeddings_output_path_type",
+        )
+        config["embeddings_output_path_template"] = OUTPUT_PATH_TYPE_TEMPLATES[
+            config["embeddings_output_path_type"]
+        ]
+
+    if config["embeddings_output_path_template"] is not None:
+        config["embeddings_output_path_template"] = validate_embeddings_output_path_template(
+            config["embeddings_output_path_template"]
+        )
+    else:
+        # Default behavior when neither explicit template nor type is provided.
+        config["embeddings_output_path_template"] = DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
+
+    # Normalize embed/classify/save_db: bool-like strings → True/False, True → default format
+    config['embed'] = normalize_bool_string(config['embed'])
+    config['classify'] = normalize_bool_string(config['classify'])
+    config['save_db'] = normalize_bool_string(config.get('save_db', False))
+
+    if config['embed'] is True:
+        config['embed'] = default_embed_format  
+    if config['classify'] is True:
+        config['classify'] = default_classify_format
+
+    # Build structured embed list, or empty list if disabled
+    if config['embed']:
+        config['embed'] = validate_embed_config(config['embed'], fallback_table_formats=config['embedding_table_format'])
+    else:
+        config['embed'] = []
+
+    # Validate that dual-format parquet export requires {embedding_table_format} token
+    parquet_formats = [ef for ef in config['embed'] if ef.filetype == 'parquet']
+    has_columns = any(ef.table_format == 'columns' for ef in parquet_formats)
+    has_serialized = any(ef.table_format == 'serialized' for ef in parquet_formats)
+    if has_columns and has_serialized and '{embedding_table_format}' not in config['embeddings_output_path_template']:
+        raise ValueError(
+            "Exporting both parquet table formats (columns and serialized) requires {embedding_table_format} token in the embeddings output path template"
+        )
+
+    config['classify'] = validate_value(config, 'classify') if config['classify'] else set()
+
+    # Validate that at least one output action is specified
+    if not config['embed'] and not config['classify'] and not config['save_db']:
+        raise ValueError("At least one of --embed, --classify, or --save_db must be specified.")
+
+    # Normalize file_glob: falsy strings → None (triggers auto-detection)
+    glob_val = normalize_bool_string(config.get('file_glob'))
+    config['file_glob'] = None if glob_val is False else glob_val
+
+    # Normalize workers: 'auto' stays as string, numbers get converted
+    workers_val = config.get('workers', 'auto')
+    if isinstance(workers_val, str) and workers_val.strip().lower() == 'auto':
+        config['workers'] = 'auto'
+    else:
+        try:
+            config['workers'] = int(workers_val)
+        except (ValueError, TypeError):
+            config['workers'] = 'auto'
+
+    # Normalize db_path: relative paths are resolved under output.
+    db_path_val = config.get('db_path') or default_config['db_path']
+    db_path = Path(db_path_val)
+    if db_path.is_absolute():
+        config['db_path'] = db_path
+    else:
+        config['db_path'] = Path(config['output']) / db_path
+
+    # Normalize log levels: uppercase string
+    for key in ('log_level', 'hoplite_log_level', 'tf_log_level'):
+        val = config.get(key)
+        if val is not None:
+            config[key] = str(val).upper()
+
+    # Normalize log_file: falsy → None
+    log_file = config.get('log_file')
+    if not log_file or (isinstance(log_file, str) and log_file.strip().lower() in ('none', 'false', '')):
+        config['log_file'] = None
+
+    # ensure source and output are Path objects and exist
+    config['source'] = Path(config['source'])
+    if not config['source'].exists():
+        raise FileNotFoundError(f"Source path {config['source']} does not exist.")
+
+    config['output'] = Path(config['output'])
+    if not config['output'].exists():
+        raise FileNotFoundError(f"Output path {config['output']} does not exist.")
 
     return config
-
-
-def load_config(yml_source):
-
-    if yml_source is None:
-        config = {}
-    else:
-        config = parse_and_merge(yml_source)
-
-    print("loaded config:")
-    print(config)
-
-    return config_dict.create(**config)
-
+  
 
 
         

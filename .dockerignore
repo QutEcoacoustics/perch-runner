@@ -1,0 +1,16 @@
+.git
+.github
+.devcontainer
+.pytest_cache
+__pycache__
+*.pyc
+.vscode
+poetry.lock
+README.md
+LICENSE
+build.sh
+run_tests.sh
+run_tests_in_container.sh
+requirements-host.txt
+Dockerfile
+tests/mounted

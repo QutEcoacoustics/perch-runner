@@ -1,25 +1,28 @@
-FROM --platform=linux/amd64 python:3.10-bookworm as perch_runner_dev
+FROM python:3.12-slim AS base
+
+# tells uv to install packages globally instead of in a venv, since we're in a container
+ENV UV_SYSTEM_PYTHON=1
 
 RUN apt update && apt install -y libsndfile1 ffmpeg
 
-RUN mkdir /app && mkdir /app/src
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+ARG PERCH_HOPLITE_VERSION=1.0.1
+RUN uv pip install "perch-hoplite[tf]==${PERCH_HOPLITE_VERSION}" pytest pyarrow
+
+# --- Models Stage: resolve presets, generate models.json, download models ---
+FROM base AS models
 WORKDIR /app
+COPY src/__init__.py src/__init__.py
+COPY src/download_models.py src/download_models.py
+RUN python -m src.download_models
 
-COPY ./pyproject.toml /app
-
-# RUN pip install git+https://github.com/google-research/perch.git@8cc4468afaac730e77d84ac447f0874f09d10a25
-RUN pip install git+https://github.com/google-research/perch.git@3746672d406c6cfe48acb0e725248cea05f57445
-
-COPY ./src /app/src
-
-# this is the trained linear models
-COPY ./models /models
-
-# this is the embedding model
-RUN python /app/src/download_model.py --version 4 --destination /models
-
-RUN pip install librosa numpy pytest pytest-mock
-
-RUN useradd -u 1000 -ms /bin/bash appuser
-
-ENV PYTHONPATH="/app:$PYTHONPATH"
+# --- Final Stage ---
+FROM base AS final
+WORKDIR /app
+COPY --from=models /root/.cache/kagglehub /root/.cache/kagglehub
+COPY . .
+COPY --from=models /app/src/models.json src/models.json
+ARG VERSION=dev
+ENV APP_VERSION=${VERSION}
+ENTRYPOINT ["python", "-m", "src.app"]

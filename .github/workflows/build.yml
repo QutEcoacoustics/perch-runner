@@ -4,7 +4,7 @@ name: build
 on:
   push:
     branches:
-      - "*"
+      - main
     paths-ignore:
       - "**/*.md"
   pull_request:
@@ -24,12 +24,12 @@ jobs:
           install: true
 
 
-      - name: Build image
-        # run build script, get the version from the last line of output, then save it to the env var for use in subsequent steps
-        # echo "CRANE_VERSION=$(sh ./build.sh | tail -n1)" >> $GITHUB_ENV
+      - name: Build image for tests
+        # Build host-platform image and persist VERSION for later push step.
         run: |
-          source ./build.sh
-          echo "PR_VERSION=$PR_VERSION" >> $GITHUB_ENV
+          VERSION="$(date '+%Y%m%d%H%M%S')_$(git rev-parse --short HEAD)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          ./build.sh "$VERSION"
 
       # reading and writing to mounted directories doesn't work unless permissions are given to 'other'
       - name: permissions for running tests with mounts
@@ -37,20 +37,19 @@ jobs:
           find ./tests -type d -exec chmod 777 {} +
           find ./tests -type f -exec chmod 644 {} +
 
-      - name: Test from container
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install host test dependencies
+        run: pip install -r requirements-host.txt
+
+      - name: Unit tests in container
+        run: ./run_tests_in_container.sh
+
+      - name: Integration tests from host
         run: ./run_tests.sh
-
-      # set up python so we can run pytest to test invoking the container from the host
-      # - name: Set up Python 3.9
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: 3.9
-
-      # - name: Test from Host
-      #   run: |
-      #     python -m pip install --upgrade pip
-      #     pip install pytest 
-      #     pytest ./src/tests/end_to_end
         
       - name: Login to Docker Hub
         if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
@@ -59,8 +58,6 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: push to docker
+      - name: Build and push multi-arch image
         if: (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tag'))
-        run: |
-          docker push qutecoacoustics/perchrunner:${{ env.PR_VERSION }}
-          docker push qutecoacoustics/perchrunner:latest
+        run: ./build.sh "${{ env.VERSION }}" --push

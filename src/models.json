@@ -1,0 +1,12 @@
+{
+  "perch_8": {
+    "kaggle": "google/bird-vocalization-classifier/tensorFlow2/bird-vocalization-classifier",
+    "version": 8,
+    "embedding_dim": 1280
+  },
+  "perch_v2": {
+    "kaggle": "google/bird-vocalization-classifier/tensorFlow2/perch_v2_cpu",
+    "version": 1,
+    "embedding_dim": 1536
+  }
+}

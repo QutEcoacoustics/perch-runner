@@ -1,4 +1,7 @@
-# When running this app in the docker container, we can test it from the host by running the scripts that launch the 
-# container. This file contains the requirments to run the tests from the host that do this. 
-
+# Dependencies for running end-to-end tests from the host with run_tests.sh
+# These tests invoke the container via `docker run` and assert on the output files.
 pytest
+pandas
+numpy
+pyarrow
+pyyaml

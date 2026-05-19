@@ -1,10 +1,39 @@
-# Note: I could only get the clear_output_files autouse fixture to work by defining in pytest_plugins, rather than by direct import. 
-# pytest_plugins can only be used in the top level conftest.py file, not in any other nested conftest.py file.
+# Top-level conftest — shared plugins and fixtures.
+import socket
+
+import pytest
 
 pytest_plugins = [
-  "tests.shared_fixtures.clear_output_files",
   "tests.shared_fixtures.helpers"
 ]
+
+_original_connect = socket.socket.connect
+_original_getaddrinfo = socket.getaddrinfo
+
+
+@pytest.fixture(autouse=True)
+def _block_network(request):
+    """Block all network access for all tests."""
+
+    error_message = (
+        "Network access blocked in tests. "
+        "Models must be pre-cached."
+    )
+
+    def _blocked(*args, **kwargs):
+        raise ConnectionError(error_message)
+
+    def _blocked_getaddrinfo(*args, **kwargs):
+        # Mirror DNS resolution failure while preserving a deterministic message.
+        raise socket.gaierror(-2, error_message)
+
+    socket.socket.connect = _blocked
+    socket.getaddrinfo = _blocked_getaddrinfo
+    try:
+        yield
+    finally:
+        socket.socket.connect = _original_connect
+        socket.getaddrinfo = _original_getaddrinfo
 
 
 

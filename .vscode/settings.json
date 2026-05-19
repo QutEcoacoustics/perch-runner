@@ -1,7 +1,9 @@
 {
-    "python.testing.pytestArgs": [
-        "tests/docker_tests"
-    ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests/unit_tests",
+        "tests/integration_tests",
+        "tests/end_to_end_tests"
+    ]
 }

@@ -1,13 +1,16 @@
-#docker image list
+#!/usr/bin/env bash
+# Run end-to-end tests from the host against a built container.
+# pytest runs on the host; the runner fixture invokes `docker run --network=none` with
+# tmp_path mounted, ensuring network is blocked at the Docker level. Asserts on output files.
+#
+# Prerequisites: pip install -r requirements-host.txt
+# Requires: a built image (qutecoacoustics/perchrunner:latest)
 
-# tests are not included in image, but pytest is installed. 
-# To run tests in the container, we mount the test directory
+set -euo pipefail
 
-# run tests from within the container
-set -x
-docker run \
--v $(pwd)/tests/:/app/tests \
---entrypoint python \
-qutecoacoustics/perchrunner:latest -m pytest /app/tests/app_tests
-set +x
+IMAGE="${IMAGE:-qutecoacoustics/perchrunner:latest}"
+export IMAGE
 
+echo "Using Docker image: $IMAGE"
+
+python -m pytest tests/end_to_end_tests -v "$@"
