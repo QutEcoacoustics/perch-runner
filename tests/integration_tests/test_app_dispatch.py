@@ -1,10 +1,8 @@
+"""Integration tests for CLI argument parsing and main dispatch."""
+
 import argparse
-import importlib
-import json
-import os
 import socket
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -14,8 +12,7 @@ from src.config import default_config, load_config
 
 
 # ---------------------------------------------------------------------------
-# This module is mainly testing that cli args are correctly parsed and passed to the config, and that main() dispatches correctly.
-# and non-analyze subcommands work
+# CLI argument parsing
 # ---------------------------------------------------------------------------
 
 class TestCLIArgsToConfig:
@@ -107,9 +104,25 @@ class TestMainDispatch:
         config = mock_embed.call_args[0][0]
         assert config["embed"][0].filetype == "parquet"
 
+    @patch("src.app.embed")
+    def test_single_wav_file_source_dispatch(self, mock_embed, tmp_path):
+        """CLI: If source is a .wav file, embed is called and config source is a file."""
+        wav_file = tmp_path / "input.wav"
+        wav_file.write_bytes(b"RIFF....WAVEfmt ")  # minimal fake wav header
+        output = tmp_path / "output"
+        output.mkdir()
+
+        with patch("sys.argv", ["app", "analyze", "--source", str(wav_file), "--output", str(output), "--embed"]):
+            main()
+
+        mock_embed.assert_called_once()
+        config = mock_embed.call_args[0][0]
+        assert config["source"] == wav_file
+        assert config["source"].is_file()
+        # file_glob is not set at config layer for single file, handled in embed_create_db
 
 # ---------------------------------------------------------------------------
-# Exit codes
+# Exit codes / Error handling
 # ---------------------------------------------------------------------------
 
 class TestExitCodes:
@@ -141,62 +154,7 @@ class TestExitCodes:
 
 
 # ---------------------------------------------------------------------------
-# Module-level behavior
-# ---------------------------------------------------------------------------
-
-class TestModuleLevel:
-
-    def test_tf_cpp_log_level_set_at_import(self):
-        """TF_CPP_MIN_LOG_LEVEL is set when app module is imported."""
-        # The import at the top of this file already triggers the setdefault.
-        # Verify it's set (setdefault won't overwrite if already present).
-        assert "TF_CPP_MIN_LOG_LEVEL" in os.environ
-        # Value should be '1' (the default) or whatever was already set
-        assert os.environ["TF_CPP_MIN_LOG_LEVEL"] in ("1", "2", "3")
-
-
-# ---------------------------------------------------------------------------
-# Version command
-# ---------------------------------------------------------------------------
-
-class TestVersionCommand:
-
-    def test_version_prints_and_exits(self, capsys):
-        with patch.dict(os.environ, {"APP_VERSION": "dev"}):
-            # src.version reads APP_VERSION at import time, and src.app imports
-            # that module-level value. Reload both inside this context so the
-            # command reflects the patched environment.
-            import src.version
-            importlib.reload(src.version)
-            import src.app
-            importlib.reload(src.app)
-            from src.app import main
-            with patch("sys.argv", ["app", "version"]):
-                main()
-        output = capsys.readouterr().out
-        assert "perch-runner dev" in output
-        assert "perch-hoplite" in output
-        assert "perch_8" in output
-        assert "perch_v2" in output
-
-
-# ---------------------------------------------------------------------------
-# Config command
-# ---------------------------------------------------------------------------
-
-class TestConfigCommand:
-
-    def test_config_prints_default_config_and_exits(self, capsys):
-        with patch("sys.argv", ["app", "config"]):
-            main()
-
-        output = capsys.readouterr().out
-        printed = json.loads(output)
-        assert printed == default_config
-
-
-# ---------------------------------------------------------------------------
-# Network blocking
+# Network blocking (fixture verification)
 # ---------------------------------------------------------------------------
 
 class TestNetworkBlocking:

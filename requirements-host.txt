@@ -1,6 +1,7 @@
-# Dependencies for running integration tests from the host.
+# Dependencies for running end-to-end tests from the host with run_tests.sh
 # These tests invoke the container via `docker run` and assert on the output files.
 pytest
 pandas
 numpy
 pyarrow
+pyyaml

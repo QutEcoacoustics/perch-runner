@@ -1,0 +1,1 @@
+from .fixtures.embeddings import *  # noqa: F401

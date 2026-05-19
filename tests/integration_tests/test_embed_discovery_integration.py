@@ -72,7 +72,6 @@ def mock_model():
 # ---------------------------------------------------------------------------
 
 class TestFileDiscoveryIntegration:
-
     def test_create_db_flat_source(self, workspace):
         """Audio files at the source root are discovered and embedded."""
         source, output = workspace

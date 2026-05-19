@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # In-container test runner. Invoked as the entrypoint by run_tests_in_container.sh.
-# Single-pass strategy: all tests run with network blocked.
+# Runs all test suites (unit, component, and end-to-end) with network blocked.
 # Any arguments are passed through to pytest.
 
 set -euo pipefail
 
 echo "=== Running tests with network blocked ==="
-python -m pytest tests/app_tests tests/integration -v "$@"
+python -m pytest tests/unit_tests tests/integration_tests tests/end_to_end_tests -v "$@"
