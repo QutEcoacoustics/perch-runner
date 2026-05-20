@@ -3,10 +3,6 @@ import socket
 
 import pytest
 
-pytest_plugins = [
-  "tests.shared_fixtures.helpers"
-]
-
 _original_connect = socket.socket.connect
 _original_getaddrinfo = socket.getaddrinfo
 

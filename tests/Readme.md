@@ -15,8 +15,6 @@ Test layout overview
 - `tests/files/`
   - Shared fixture assets (audio samples, fixture embeddings, configs).
 
-- `tests/shared_fixtures/`
-  - Shared pytest fixtures/helpers used across test groups.
 
 Network policy
 
