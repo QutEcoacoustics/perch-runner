@@ -27,7 +27,7 @@ jobs:
       - name: Build image for tests
         # Build host-platform image and persist VERSION for later push step.
         run: |
-          VERSION="$(date '+%Y%m%d%H%M%S')_$(git rev-parse --short HEAD)"
+          VERSION=$(bash ./version_gen.sh)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           ./build.sh "$VERSION"
 

@@ -20,8 +20,9 @@ for arg in "$@"; do
   fi
 done
 
-# Default version to timestamp if not provided
-VERSION=${VERSION:-V2_$(date '+%Y%m%d%H%M%S')_$(git rev-parse --short HEAD)}
+if [ -z "$VERSION" ]; then
+  VERSION=$(bash "$(dirname "$0")/version_gen.sh")
+fi
 tag=qutecoacoustics/perchrunner
 
 echo "Mode: $( [ "$PUSH" = true ] && echo 'RELEASE' || echo 'BUILD' )"
