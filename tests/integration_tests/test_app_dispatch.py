@@ -1,14 +1,21 @@
 """Integration tests for CLI argument parsing and main dispatch."""
 
 import argparse
+import json
+import shutil
 import socket
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import requests
 
-from src.app import main, get_parser
+from src.app import main, get_parser, embed as app_embed
 from src.config import default_config, load_config
+
+
+FIXTURES_DIR = Path("tests/files")
+KOALA_CONFIG = FIXTURES_DIR / "configs" / "koala.json"
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +86,60 @@ class TestCLIArgsToConfig:
         assert config["hoplite_log_level"] == "WARNING"
         assert config["tf_log_level"] == "ERROR"
         assert config["log_file"] == "/tmp/test.log"
+
+    def test_load_config_and_embed_with_single_recognizer(self, workspace):
+        """Recognizers-only analyze flow works from CLI args through app.embed()."""
+        source, output = workspace
+
+        with patch("src.app.embed") as mock_embed:
+            with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--recognizers", str(KOALA_CONFIG)]):
+                main()
+
+        mock_embed.assert_called_once()
+        config = mock_embed.call_args[0][0]
+        assert len(config["recognizers"]) == 1
+        assert config["model_choice"] == "perch_8"
+
+    def test_explicit_model_choice_mismatch_with_recognizer_errors(self, workspace):
+        source, output = workspace
+
+        with patch("sys.argv", [
+            "app",
+            "analyze",
+            "--source", str(source),
+            "--output", str(output),
+            "--model_choice", "perch_v2",
+            "--recognizers", str(KOALA_CONFIG),
+        ]):
+            with pytest.raises(ValueError, match="does not match recognizer embedding model"):
+                main()
+
+    def test_load_config_and_embed_with_recognizer_path_list(self, workspace, tmp_path):
+        """Comma-separated recognizer config paths normalize and run through app.embed()."""
+        source, output = workspace
+
+        recognizer_payload = json.loads(KOALA_CONFIG.read_text())["recognizers"][0]
+        first_cfg = tmp_path / "koala_one.json"
+        second_cfg = tmp_path / "koala_two.json"
+        first_cfg.write_text(json.dumps({"recognizers": [recognizer_payload]}))
+        second_payload = json.loads(json.dumps(recognizer_payload))
+        second_payload["name"] = "koala_2"
+        second_cfg.write_text(json.dumps({"recognizers": [second_payload]}))
+
+        with patch("src.app.embed") as mock_embed:
+            with patch("sys.argv", [
+                "app",
+                "analyze",
+                "--source", str(source),
+                "--output", str(output),
+                "--recognizers", f"{first_cfg},{second_cfg}",
+            ]):
+                main()
+
+        mock_embed.assert_called_once()
+        config = mock_embed.call_args[0][0]
+        assert len(config["recognizers"]) == 2
+        assert config["model_choice"] == "perch_8"
 
 # ---------------------------------------------------------------------------
 # main() dispatch

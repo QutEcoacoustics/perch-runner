@@ -1,4 +1,10 @@
-"""Parsing config files."""
+"""Load, merge, and normalize runner configuration.
+
+This module combines defaults, config-file values, and CLI arguments into one
+validated config dict used by the rest of the pipeline. It also normalizes
+multi-value options such as embed formats, recognizer configs, and output-path
+templating settings.
+"""
 
 import json
 import re
@@ -10,6 +16,13 @@ from typing import ClassVar
 
 from src.version import MODELS
 
+from src.output_paths import resolve_template_paths
+from src.recognizer_utils import (
+    build_classifier_config_list,
+    resolve_model_choice_for_recognizers,
+    validate_recognizers,
+)
+
 default_config_dir = "/mnt/config/"
 
 
@@ -19,23 +32,10 @@ valid_values = {
     "classify": ["parquet", "csv", "hoplite"],
     "embedding_table_format": ["serialized", "columns"],
     "embeddings_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
+    "classify_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
+    "output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
 }
 
-
-OUTPUT_PATH_TYPE_TEMPLATES = {
-    "flat_basename": "{basename}{ext}",
-    "nested_basename": "{parents}/{basename}{ext}",
-    "nested": "{parents}/{basename}{ext}",
-    "flat": "embeddings{ext}",
-}
-
-DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE = "{parents}/{basename}/embeddings{ext}"
-
-ALLOWED_OUTPUT_TEMPLATE_TOKENS = frozenset(
-    {"parents", "basename", "ext", "embedding_table_format", "analysis"}
-)
-
-_TEMPLATE_TOKEN_PATTERN = re.compile(r"\{([^{}]+)\}")
 
 # if embed or classify is set to True without a specified format
 # use these formats as the default
@@ -60,6 +60,10 @@ default_config = {
     "log_file": None,
     "embeddings_output_path_template": None,
     "embeddings_output_path_type": None,
+    "classify_output_path_template": None,
+    "classify_output_path_type": None,
+    "output_path_type": None,
+    "recognizers": None,
 }
 
 
@@ -172,10 +176,13 @@ def parse_list_values(values):
 
     # if it's a string
     if isinstance(values, str):
-        values = [fmt.strip().lower() for fmt in values.split(",")]
+        values = [fmt.strip() for fmt in values.split(",")]
 
     if not isinstance(values, (list, tuple, set)):
         raise ValueError(f"Invalid type: {type(values)}. Must be a string or a list.")
+
+
+    values = [fmt.lower() for fmt in values]
 
     # deduplicate via set, then sort for deterministic ordering
     values = sorted(set([fmt.strip().lower() for fmt in list(values)]))
@@ -213,116 +220,6 @@ def validate_single_value(value, key):
     return single
 
 
-def validate_embeddings_output_path_template(template):
-    """Validate output path template token usage and basic path safety."""
-    if not isinstance(template, str):
-        raise ValueError("embeddings_output_path_template must be a string")
-
-    candidate = template.strip()
-    if not candidate:
-        raise ValueError("embeddings_output_path_template cannot be empty")
-
-    tokens = _TEMPLATE_TOKEN_PATTERN.findall(candidate)
-    invalid_tokens = [t for t in tokens if t not in ALLOWED_OUTPUT_TEMPLATE_TOKENS]
-    if invalid_tokens:
-        raise ValueError(
-            "Invalid token(s) in embeddings_output_path_template: "
-            f"{invalid_tokens}. Allowed tokens are: {sorted(ALLOWED_OUTPUT_TEMPLATE_TOKENS)}"
-        )
-
-    normalized = candidate.replace("\\", "/")
-    if normalized.startswith("/"):
-        raise ValueError("embeddings_output_path_template must be relative (absolute paths are not allowed)")
-
-    for part in Path(normalized).parts:
-        if part == "..":
-            raise ValueError("embeddings_output_path_template may not contain '..' path components")
-
-    return candidate
-
-
-def _ensure_relative_safe_path(path_obj):
-    """Reject absolute / traversal paths for relative output paths."""
-    if path_obj.is_absolute():
-        raise ValueError("Output path must be relative")
-    if any(part == ".." for part in path_obj.parts):
-        raise ValueError("Output path may not contain '..' path components")
-
-
-def render_embeddings_output_relative_path(
-        template,
-        audio_file,
-        output_ext,
-        embedding_table_format,
-        analysis,
-):
-    """Render a relative output path from template tokens.
-
-    Applies extension rules:
-    - If {ext} is absent: append extension.
-    - If rendered already ends with extension: keep it.
-    - If rendered has a mismatching hardcoded extension: warn and append.
-    """
-    template = validate_embeddings_output_path_template(template)
-    audio_rel = Path(audio_file)
-
-    _ensure_relative_safe_path(audio_rel)
-
-    parents = "" if audio_rel.parent == Path(".") else audio_rel.parent.as_posix()
-    basename = audio_rel.name
-    ext = output_ext if str(output_ext).startswith(".") else f".{output_ext}"
-
-    rendered = template
-    rendered = rendered.replace("{parents}", parents)
-    rendered = rendered.replace("{basename}", basename)
-    rendered = rendered.replace("{ext}", ext)
-    rendered = rendered.replace("{embedding_table_format}", str(embedding_table_format))
-    rendered = rendered.replace("{analysis}", str(analysis))
-
-    rendered = rendered.replace("\\", "/")
-    while "//" in rendered:
-        rendered = rendered.replace("//", "/")
-    rendered = rendered.lstrip("/")
-
-    if "{ext}" not in template:
-        if rendered.endswith(ext):
-            pass
-        else:
-            current_suffix = Path(rendered).suffix
-            if current_suffix and current_suffix != ext:
-                warnings.warn(
-                    "Template contains a hardcoded extension that does not match the "
-                    f"output type ({current_suffix} vs {ext}); appending correct extension.",
-                    UserWarning,
-                )
-            rendered = f"{rendered}{ext}"
-    else:
-        if not rendered.endswith(ext):
-            current_suffix = Path(rendered).suffix
-            if current_suffix and current_suffix != ext:
-                warnings.warn(
-                    "Template contains a hardcoded extension that does not match the "
-                    f"output type ({current_suffix} vs {ext}); appending correct extension.",
-                    UserWarning,
-                )
-            rendered = f"{rendered}{ext}"
-
-    rel_path = Path(rendered)
-    _ensure_relative_safe_path(rel_path)
-    return rel_path
-
-
-def ensure_output_path_within_root(relative_path, output_root):
-    """Ensure final output path remains inside output_root."""
-    rel_path = Path(relative_path)
-    _ensure_relative_safe_path(rel_path)
-
-    output_root = Path(output_root).resolve()
-    abs_path = (output_root / rel_path).resolve()
-    abs_path.relative_to(output_root)
-    return abs_path
-
-
 def load_config(config_path=None, args=None):
     """
     attemps to load a config file, either from the specified path or from the default config directory. 
@@ -348,16 +245,20 @@ def load_config(config_path=None, args=None):
     else:
         print("No config file found. Using default configuration.")
         config = {}
-
-    # apply default config, giving precedence to the loaded config
-    config = {**default_config, **config}
+    file_config = dict(config)
 
     # merge with command line args, giving precedence to command line args
+    args_dict = {}
     if args is not None:
         args_dict = vars(args)
         # remove config-path from args_dict since it is not a config parameter
         args_dict.pop('config_file', None)
-        config = {**config, **{k: v for k, v in args_dict.items() if v is not None}}
+    explicit_config = {**file_config, **{k: v for k, v in args_dict.items() if v is not None}}
+
+    # apply defaults last: explicit values from config/CLI take precedence
+    config = {**default_config, **explicit_config}
+
+    provided_model_choice = explicit_config.get("model_choice")
 
     # allow only config keys that are in the default config
     for key in config.keys():
@@ -368,15 +269,41 @@ def load_config(config_path=None, args=None):
     # normalize optional templating values first
     template_val = normalize_bool_string(config.get("embeddings_output_path_template"))
     type_val = normalize_bool_string(config.get("embeddings_output_path_type"))
+    classify_template_val = normalize_bool_string(config.get("classify_output_path_template"))
+    classify_type_val = normalize_bool_string(config.get("classify_output_path_type"))
+    output_path_type_val = normalize_bool_string(config.get("output_path_type"))
     config["embeddings_output_path_template"] = None if template_val is False else template_val
     config["embeddings_output_path_type"] = None if type_val is False else type_val
+    config["classify_output_path_template"] = None if classify_template_val is False else classify_template_val
+    config["classify_output_path_type"] = None if classify_type_val is False else classify_type_val
+    config["output_path_type"] = None if output_path_type_val is False else output_path_type_val
+    config["recognizers"] = build_classifier_config_list(
+        config.get("recognizers"),
+        config_dir=(config_file.parent if config_file is not None else Path(default_config_dir)),
+    )
 
     if config["embeddings_output_path_template"] and config["embeddings_output_path_type"]:
         raise ValueError(
             "embeddings_output_path_template and embeddings_output_path_type are mutually exclusive"
         )
 
-    if "model_choice" in config:
+    if config["classify_output_path_template"] and config["classify_output_path_type"]:
+        raise ValueError(
+            "classify_output_path_template and classify_output_path_type are mutually exclusive"
+        )
+
+    if config.get("recognizers"):
+        if provided_model_choice is not None:
+            provided_model_choice = validate_single_value(
+                provided_model_choice,
+                "model_choice",
+            )
+        config["model_choice"] = resolve_model_choice_for_recognizers(
+            provided_model_choice,
+            config["recognizers"],
+            MODELS,
+        )
+    elif "model_choice" in config:
         config["model_choice"] = validate_single_value(
             config["model_choice"],
             "model_choice",
@@ -385,22 +312,30 @@ def load_config(config_path=None, args=None):
     if "embedding_table_format" in config:
         config["embedding_table_format"] = validate_value(config, "embedding_table_format")
 
+
+    if config["output_path_type"] is not None:
+        config["output_path_type"] = validate_single_value(config["output_path_type"], "output_path_type")
+
+        # if output_path_type is specified, use that value for the specific output path types (embeddings/classify)
+        # unless they are specified individually, in which case the individually specified value takes precedence
+        if config["embeddings_output_path_type"] is None:
+            config["embeddings_output_path_type"] = config["output_path_type"]
+        if config["classify_output_path_type"] is None:
+            config["classify_output_path_type"] = config["output_path_type"]
+
     if config["embeddings_output_path_type"] is not None:
         config["embeddings_output_path_type"] = validate_single_value(
             config["embeddings_output_path_type"],
             "embeddings_output_path_type",
         )
-        config["embeddings_output_path_template"] = OUTPUT_PATH_TYPE_TEMPLATES[
-            config["embeddings_output_path_type"]
-        ]
 
-    if config["embeddings_output_path_template"] is not None:
-        config["embeddings_output_path_template"] = validate_embeddings_output_path_template(
-            config["embeddings_output_path_template"]
+    if config["classify_output_path_type"] is not None:
+        config["classify_output_path_type"] = validate_single_value(
+            config["classify_output_path_type"],
+            "classify_output_path_type",
         )
-    else:
-        # Default behavior when neither explicit template nor type is provided.
-        config["embeddings_output_path_template"] = DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
+
+    resolve_template_paths(config)
 
     # Normalize embed/classify/save_db: bool-like strings → True/False, True → default format
     config['embed'] = normalize_bool_string(config['embed'])
@@ -430,7 +365,7 @@ def load_config(config_path=None, args=None):
     config['classify'] = validate_value(config, 'classify') if config['classify'] else set()
 
     # Validate that at least one output action is specified
-    if not config['embed'] and not config['classify'] and not config['save_db']:
+    if not config['embed'] and not config['classify'] and not config['save_db'] and not config['recognizers']:
         raise ValueError("At least one of --embed, --classify, or --save_db must be specified.")
 
     # Normalize file_glob: falsy strings → None (triggers auto-detection)

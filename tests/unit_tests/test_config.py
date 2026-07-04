@@ -7,22 +7,26 @@ import pytest
 import yaml
 
 from src.config import (
-    ALLOWED_OUTPUT_TEMPLATE_TOKENS,
-    DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE,
-    OUTPUT_PATH_TYPE_TEMPLATES,
     EmbeddingsFormat,
     config_to_json,
-    ensure_output_path_within_root,
-    render_embeddings_output_relative_path,
     normalize_bool_string,
     parse_list_values,
     validate_embed_config,
-    validate_embeddings_output_path_template,
+    validate_recognizers,
     validate_single_value,
     validate_value,
     load_config,
     find_config,
     valid_values,
+)
+from src.output_paths import (
+    ALLOWED_OUTPUT_TEMPLATE_TOKENS,
+    DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE,
+    DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE,
+    OUTPUT_PATH_TYPE_TEMPLATES,
+    ensure_output_path_within_root,
+    render_output_relative_path,
+    validate_output_path_template,
 )
 
 
@@ -307,6 +311,68 @@ class TestValidateValue:
 
 
 # ---------------------------------------------------------------------------
+# validate_recognizers
+# ---------------------------------------------------------------------------
+
+class TestValidateRecognizers:
+
+    def test_none_returns_empty_list(self):
+        assert validate_recognizers(None) == []
+
+    def test_single_dict_promoted_to_list(self):
+        recognizers = {"classifier": {"classes": ["x"]}}
+        result = validate_recognizers(recognizers)
+        assert isinstance(result, list)
+        assert result == [recognizers]
+
+    def test_list_of_dicts_valid(self):
+        recognizers = [
+            {"classifier": {"classes": ["x"]}},
+            {"classifier": {"classes": ["y"]}},
+        ]
+        assert validate_recognizers(recognizers) == recognizers
+
+    def test_invalid_outer_type_raises(self):
+        with pytest.raises(ValueError, match="recognizers string must be an existing JSON file path"):
+            validate_recognizers("not-a-list")
+
+    def test_invalid_item_type_raises(self):
+        with pytest.raises(ValueError, match="recognizers string must be an existing JSON file path"):
+            validate_recognizers([{"ok": True}, "bad"])
+
+    def test_string_path_to_list_json_loads(self, tmp_path):
+        recognizers_file = tmp_path / "recognizers.json"
+        recognizers_file.write_text(json.dumps([
+            {"classifier": {"classes": ["owl"]}},
+            {"classifier": {"classes": ["frog"]}},
+        ]))
+
+        result = validate_recognizers(str(recognizers_file))
+        assert len(result) == 2
+        assert result[0]["classifier"]["classes"] == ["owl"]
+
+    def test_string_path_to_dict_json_loads_and_promotes(self, tmp_path):
+        recognizers_file = tmp_path / "recognizer.json"
+        recognizers_file.write_text(json.dumps({"classifier": {"classes": ["koala"]}}))
+
+        result = validate_recognizers(str(recognizers_file))
+        assert result == [{"classifier": {"classes": ["koala"]}}]
+
+    def test_string_path_to_wrapped_payload_loads(self, tmp_path):
+        recognizers_file = tmp_path / "wrapped.json"
+        recognizers_file.write_text(json.dumps({
+            "recognizers": [{"classifier": {"classes": ["currawong"]}}]
+        }))
+
+        result = validate_recognizers(str(recognizers_file))
+        assert result == [{"classifier": {"classes": ["currawong"]}}]
+
+    def test_string_nonexistent_path_raises(self):
+        with pytest.raises(ValueError, match="existing JSON file path"):
+            validate_recognizers("/does/not/exist/recognizers.json")
+
+
+# ---------------------------------------------------------------------------
 # load_config (integration)
 # ---------------------------------------------------------------------------
 
@@ -492,6 +558,110 @@ class TestLoadConfig:
 
         with pytest.raises(ValueError, match="At least one of --embed, --classify, or --save_db"):
             load_config(config_path=None, args=args)
+
+    def test_recognizers_only_is_valid(self, tmp_path):
+        """recognizers in config should count as a runnable action."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        recognizers_payload = json.loads(Path("tests/files/configs/koala.json").read_text())["recognizers"]
+        recognizers_file = tmp_path / "recognizers.json"
+        recognizers_file.write_text(json.dumps(recognizers_payload))
+
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            f"source: {source}\n"
+            f"output: {output}\n"
+            "embed: false\n"
+            "classify: false\n"
+            "save_db: false\n"
+            "recognizers: recognizers.json\n"
+        )
+
+        config = load_config(config_path=str(config_file))
+        assert config["embed"] == []
+        assert config["classify"] == set()
+        assert len(config["recognizers"].configs) == 1
+
+    def test_recognizers_path_in_config_file_loads(self, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        recognizers_file = tmp_path / "recognizers.json"
+        recognizers_file.write_text(Path("tests/files/configs/koala.json").read_text())
+
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            f"source: {source}\n"
+            f"output: {output}\n"
+            "embed: false\n"
+            "classify: false\n"
+            "save_db: false\n"
+            "recognizers: recognizers.json\n"
+        )
+
+        config = load_config(config_path=str(config_file))
+        assert config["embed"] == []
+        assert config["classify"] == set()
+        assert len(config["recognizers"].configs) == 1
+        assert config["recognizers"].configs[0].classifier_name == "koala"
+
+    def test_cli_recognizers_path_overrides_config_recognizers(self, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        recognizer_payload = json.loads(Path("tests/files/configs/koala.json").read_text())["recognizers"][0]
+
+        config_recognizers = tmp_path / "config_recognizers.json"
+        config_payload = json.loads(json.dumps(recognizer_payload))
+        config_payload["name"] = "from_config"
+        config_recognizers.write_text(json.dumps({"recognizers": [config_payload]}))
+
+        cli_recognizers = tmp_path / "cli_recognizers.json"
+        cli_payload = json.loads(json.dumps(recognizer_payload))
+        cli_payload["name"] = "from_cli"
+        cli_recognizers.write_text(json.dumps({"recognizers": [cli_payload]}))
+
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            f"source: {source}\n"
+            f"output: {output}\n"
+            "embed: false\n"
+            "classify: false\n"
+            "save_db: false\n"
+            f"recognizers: {config_recognizers.name}\n"
+        )
+
+        args = argparse.Namespace(
+            embed=None,
+            classify=None,
+            save_db=None,
+            source=None,
+            output=None,
+            model_choice=None,
+            embedding_table_format=None,
+            file_glob=None,
+            workers=None,
+            db_path=None,
+            log_level=None,
+            hoplite_log_level=None,
+            tf_log_level=None,
+            log_file=None,
+            embeddings_output_path_template=None,
+            embeddings_output_path_type=None,
+            recognizers=str(cli_recognizers),
+            config_file=None,
+        )
+
+        config = load_config(config_path=str(config_file), args=args)
+        assert len(config["recognizers"].configs) == 1
+        assert config["recognizers"].configs[0].classifier_name == "from_cli"
 
     def test_embed_cross_product_via_load_config(self, make_config):
         """Full integration: embed + embedding_table_format cross-product."""
@@ -845,19 +1015,23 @@ class TestOutputPathTemplateConfig:
 
     def test_validate_template_accepts_allowed_tokens(self):
         template = "{parents}/{basename}-{embedding_table_format}-{analysis}{ext}"
-        assert validate_embeddings_output_path_template(template) == template
+        assert validate_output_path_template(template, template_type="embeddings") == template
 
     def test_validate_template_rejects_unknown_tokens(self):
         with pytest.raises(ValueError, match="Invalid token"):
-            validate_embeddings_output_path_template("{basename}-{unknown}{ext}")
+            validate_output_path_template("{basename}-{unknown}{ext}", template_type="embeddings")
 
     def test_validate_template_rejects_absolute(self):
         with pytest.raises(ValueError, match="relative"):
-            validate_embeddings_output_path_template("/abs/{basename}{ext}")
+            validate_output_path_template("/abs/{basename}{ext}", template_type="embeddings")
 
     def test_validate_template_rejects_parent_traversal(self):
         with pytest.raises(ValueError, match="may not contain '..'"):
-            validate_embeddings_output_path_template("../{basename}{ext}")
+            validate_output_path_template("../{basename}{ext}", template_type="embeddings")
+
+    def test_validate_recognizer_template_accepts_classifier_name(self):
+        template = "{classifier_name}/{parents}/{basename}-{analysis}{ext}"
+        assert validate_output_path_template(template, template_type="recognizers") == template
 
     def test_load_config_rejects_template_and_type_together(self, make_config):
         path = make_config({
@@ -885,61 +1059,93 @@ class TestOutputPathTemplateConfig:
         config = load_config(config_path=path)
         assert config["embeddings_output_path_type"] is None
         assert config["embeddings_output_path_template"] == DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
+        assert config["classify_output_path_template"] == DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE
+
+    def test_load_config_keeps_classify_template(self, make_config):
+        classify_template = "results/classify-{analysis}{ext}"
+        path = make_config({"classify_output_path_template": classify_template})
+        config = load_config(config_path=path)
+        assert config["classify_output_path_template"] == classify_template
+
+    def test_load_config_rejects_invalid_classify_template(self, make_config):
+        path = make_config({"classify_output_path_template": "{basename}-{unknown}{ext}"})
+        with pytest.raises(ValueError, match="Invalid token"):
+            load_config(config_path=path)
 
 
 class TestOutputPathTemplateRendering:
 
     def test_render_nested_tokens(self, tmp_path):
         rel = Path("site/day/audio.wav")
-        rendered = render_embeddings_output_relative_path(
+        rendered = render_output_relative_path(
             template="{parents}/{basename}-{embedding_table_format}-{analysis}{ext}",
             audio_file=rel,
-            output_ext="parquet",
-            embedding_table_format="columns",
+            ext="parquet",
             analysis="embed",
+            embedding_table_format="columns",
         )
         assert rendered.as_posix() == "site/day/audio.wav-columns-embed.parquet"
 
     def test_render_appends_ext_when_ext_token_missing(self, tmp_path):
-        rendered = render_embeddings_output_relative_path(
+        rendered = render_output_relative_path(
             template="{basename}",
             audio_file=Path("file.wav"),
-            output_ext="csv",
-            embedding_table_format="serialized",
+            ext="csv",
             analysis="embed",
+            embedding_table_format="serialized",
         )
         assert rendered.as_posix() == "file.wav.csv"
 
     def test_render_keeps_matching_hardcoded_ext(self, tmp_path):
-        rendered = render_embeddings_output_relative_path(
+        rendered = render_output_relative_path(
             template="{basename}.parquet",
             audio_file=Path("file.wav"),
-            output_ext="parquet",
-            embedding_table_format="serialized",
+            ext="parquet",
             analysis="embed",
+            embedding_table_format="serialized",
         )
         assert rendered.as_posix() == "file.wav.parquet"
 
     def test_render_warns_and_appends_on_mismatched_hardcoded_ext(self, tmp_path):
         with pytest.warns(UserWarning, match="hardcoded extension"):
-            rendered = render_embeddings_output_relative_path(
+            rendered = render_output_relative_path(
                 template="{basename}.csv",
                 audio_file=Path("file.wav"),
-                output_ext="parquet",
-                embedding_table_format="serialized",
+                ext="parquet",
                 analysis="embed",
+                embedding_table_format="serialized",
             )
         assert rendered.as_posix() == "file.wav.csv.parquet"
 
     def test_render_rejects_relative_traversal_after_render(self, tmp_path):
         with pytest.raises(ValueError, match="may not contain '..'"):
-            render_embeddings_output_relative_path(
+            render_output_relative_path(
                 template="../{basename}{ext}",
                 audio_file=Path("file.wav"),
-                output_ext="parquet",
-                embedding_table_format="serialized",
+                ext="parquet",
                 analysis="embed",
+                embedding_table_format="serialized",
             )
+
+    def test_render_recognizer_template_uses_classifier_name(self):
+        rendered = render_output_relative_path(
+            template="{classifier_name}/{parents}/{basename}/recognizer_results{ext}",
+            audio_file=Path("site/file.wav"),
+            analysis="classify",
+            ext="csv",
+            classifier_name="koala_02",
+        )
+        assert rendered.as_posix() == "koala_02/site/file.wav/recognizer_results.csv"
+
+    def test_render_template_without_ext_token(self):
+        rendered = render_output_relative_path(
+            template="{classifier_name}/{basename}",
+            audio_file=Path("file"),
+            analysis="classify",
+            ext=".csv",
+            classifier_name="koala_02",
+        )
+        assert rendered.as_posix() == "koala_02/file.csv"
 
     def test_output_path_containment(self, tmp_path):
         root = tmp_path / "output"
@@ -956,9 +1162,18 @@ class TestOutputPathTemplateRendering:
 
 def test_allowed_template_tokens_documented_set():
     assert ALLOWED_OUTPUT_TEMPLATE_TOKENS == {
-        "parents",
-        "basename",
-        "ext",
-        "embedding_table_format",
-        "analysis",
+        "embeddings": frozenset({
+            "parents",
+            "basename",
+            "ext",
+            "embedding_table_format",
+            "analysis",
+        }),
+        "recognizers": frozenset({
+            "classifier_name",
+            "parents",
+            "basename",
+            "ext",
+            "analysis",
+        }),
     }

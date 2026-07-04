@@ -1,3 +1,10 @@
+"""Build filename remapping functions from regex-based sourcemap rules.
+
+This module turns user-supplied regex patterns and replacement templates into
+callables that rewrite source filenames before they are written to exported
+tables or recognizer outputs.
+"""
+
 import re
 from pathlib import Path
 

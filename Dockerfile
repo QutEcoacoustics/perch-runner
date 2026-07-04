@@ -3,12 +3,16 @@ FROM python:3.12-slim AS base
 # tells uv to install packages globally instead of in a venv, since we're in a container
 ENV UV_SYSTEM_PYTHON=1
 
-RUN apt update && apt install -y libsndfile1 ffmpeg
+RUN apt update && apt install -y git libsndfile1 ffmpeg
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-ARG PERCH_HOPLITE_VERSION=1.0.1
-RUN uv pip install "perch-hoplite[tf]==${PERCH_HOPLITE_VERSION}" pytest pyarrow
+ARG PERCH_HOPLITE_VERSION=1.0.2
+ARG EMBEDDINGS_CLASSIFIER_REF=v2026.07.04
+RUN uv pip install "perch-hoplite[tf]==${PERCH_HOPLITE_VERSION}" \
+	"embeddings-classifier @ git+https://github.com/QutEcoacoustics/embeddings-classifier.git@${EMBEDDINGS_CLASSIFIER_REF}" \
+	"numba>=0.60" \
+	pytest pyarrow
 
 # --- Models Stage: resolve presets, generate models.json, download models ---
 FROM base AS models

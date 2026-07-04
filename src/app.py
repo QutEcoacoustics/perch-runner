@@ -34,13 +34,13 @@ def handle_analyze(args):
 
         log.info("Starting perch-runner version %s", __version__)
 
-        if config['embed'] or config['save_db']:
+        # there are two analyze branches: embedding (and then maybe doing something with the embeddings), or classify, which does not produce embeddings. 
+        if config['embed'] or config['save_db'] or config.get('recognizers'):
             log.info("Embed requested using model: %s", config['model_choice'])
             embed(config)
 
-        if config['classify']:
-            log.info("Classify requested using model: %s", config['model_choice'])
-            log.warning("classify is not implemented yet")
+        if config['classify'] and not config.get('recognizers'):
+            log.warning("classify output format requested but no recognizers were configured; skipping classification")
     except MemoryError:
         logging.getLogger(__name__).error(
             "OUT OF MEMORY: Not enough RAM to complete embedding. "
@@ -78,11 +78,23 @@ def get_parser():
     )
     analyze_parser.add_argument("--embed", nargs='?', const=True, default=None,
                                 help="embedding output format(s), e.g. parquet, csv, parquet-columns. Use --embed with no value for default (parquet).")
+    
+    # Classify means perch base model classification (as opposed to "recognizers" which is embeddings linear classifiers)
     analyze_parser.add_argument("--classify", nargs='?', const=True, default=None,
                                 help="classification output format(s), e.g. parquet, csv. Use --classify with no value for default (csv).")
     analyze_parser.add_argument("--source", default=None, help="path to the source audio folder")
     analyze_parser.add_argument("--output", default=None, help="path to the output folder")
     analyze_parser.add_argument("--config_file", default=None, help="path to the config file")
+
+    # Recognizers means embeddings linear classifiers (as opposed to "classify" which is perch base model classification)
+    analyze_parser.add_argument(
+        "--recognizers",
+        default=None,
+        help=(
+            "path to recognizers JSON file. The file may contain either a recognizers list/dict "
+            "or an object with a top-level 'recognizers' key."
+        ),
+    )
     analyze_parser.add_argument("--model_choice", default=None, help="model to use, e.g. perch_v2")
     analyze_parser.add_argument("--embedding_table_format", default=None, help="table format for embeddings, e.g. serialized, columns")
     analyze_parser.add_argument(
@@ -96,7 +108,30 @@ def get_parser():
     analyze_parser.add_argument(
         "--embeddings_output_path_type",
         default=None,
-        help="preset output path type: flat_basename, nested_basename, nested, flat",
+        help="preset output path type for embeddings: flat_basename, nested_basename, nested, flat",
+    )
+    analyze_parser.add_argument(
+        "--classify_output_path_template",
+        default=None,
+        help=(
+            "custom output path template for recognizer result files. "
+            "Supported tokens: {classifier_name}, {parents}, {basename}, {ext}, {analysis}."
+        ),
+    )
+    analyze_parser.add_argument(
+        "--classify_output_path_type",
+        default=None,
+        help="preset output path type for recognizer results: flat_basename, nested_basename, nested, flat",
+    )
+    analyze_parser.add_argument(
+        "--output_path_type",
+        default=None,
+        help="preset output path type applied to both embeddings and recognizer results (overridden by more specific keys): flat_basename, nested_basename, nested, flat",
+    )
+    analyze_parser.add_argument(
+        "--dataset_name",
+        default=None,
+        help="dataset name used in runner configuration",
     )
     analyze_parser.add_argument("--db_path", default=None, help="database output path. Relative paths are resolved under --output (default: db)")
     analyze_parser.add_argument("--save_db", nargs='?', const=True, default=None, help="save the hoplite database after processing. Use --save_db with no value to enable (default: false)")

@@ -1,3 +1,10 @@
+"""Discover audio inputs and build the hoplite embeddings database.
+
+This module is responsible for finding source audio files, choosing or
+auto-detecting the input glob layout, and driving perch-hoplite to create the
+windowed embeddings database that later export and recognizer stages read from.
+"""
+
 import logging
 import time
 from pathlib import Path

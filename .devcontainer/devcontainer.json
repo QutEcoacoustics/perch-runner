@@ -16,6 +16,7 @@
 
 	// Uncomment the next line to run commands after the container is created - for example installing curl.
 	// "postCreateCommand": "apt-get update && apt-get install -y curl",
+	"postCreateCommand": "bash -lc 'if [ -d /workspace/embeddings-classifier ]; then uv pip install -e /workspace/embeddings-classifier; else echo \"Optional mount /workspace/embeddings-classifier not found; using pinned release install\"; fi'",
 
 	// Uncomment when using a ptrace-based debugger like C++, Go, and Rust
 	"runArgs": ["--memory=16g", "--memory-swap=18g"],
@@ -28,7 +29,8 @@
 	// Uncomment to use the Docker CLI from inside the container. See https://aka.ms/vscode-remote/samples/docker-from-docker.
 	"mounts": [
         "source=${localWorkspaceFolder}/tests/files/,target=/mnt/test_files,type=bind",
-		"source=${localWorkspaceFolder}/tests/mounted/output,target=/mnt/output,type=bind"
+		"source=${localWorkspaceFolder}/tests/mounted/output,target=/mnt/output,type=bind",
+		"source=${localWorkspaceFolder}/../embeddings-classifier,target=/workspace/embeddings-classifier,type=bind"
 	],
 
 	// Uncomment to connect as a non-root user if you've added one. See https://aka.ms/vscode-remote/containers/non-root.

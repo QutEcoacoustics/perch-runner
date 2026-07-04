@@ -347,6 +347,57 @@ class TestEmbedFormatDispatch:
             embed.embed(config)
 
 
+class TestEmbedRecognizers:
+
+    @pytest.fixture(autouse=True)
+    def patch_internals(self):
+        with mock.patch("src.embed.create_database", return_value=100.0), \
+             mock.patch("src.embed.log_ram"):
+            yield
+
+    def _base_config(self, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir(exist_ok=True)
+        output = tmp_path / "output"
+        output.mkdir(exist_ok=True)
+        return {
+            "source": str(source),
+            "output": str(output),
+            "db_path": str(output / "db"),
+            "model_choice": "perch_v2",
+            "dataset_name": "test",
+            "embedding_table_format": ["serialized", "columns"],
+            "embed": [],
+            "classify": set(),
+        }
+
+    def test_recognizers_trigger_classification_even_when_classify_disabled(self, tmp_path):
+        """
+        TODO: is this needed? 
+        Classify is for the perch base model classification, which is completely different.it does not use embeddings. 
+        recognizers is for embeddings-based recognizers that use embeddings as input. 
+        "classify" does not require much additional config (e.g. an actual linear model)
+        """
+        config = self._base_config(tmp_path)
+        config["recognizers"] = [{"classifier": {"classes": ["owl"]}}]
+
+        with mock.patch("src.embed.run_recognizers_over_db") as mock_classify:
+            embed.embed(config)
+
+        mock_classify.assert_called_once()
+        _, kwargs = mock_classify.call_args
+        assert kwargs["classify_filetype"] == "csv"
+
+    def test_no_recognizers_skips_classification_stage(self, tmp_path):
+        config = self._base_config(tmp_path)
+        config["recognizers"] = []
+
+        with mock.patch("src.embed.run_recognizers_over_db") as mock_classify:
+            embed.embed(config)
+
+        mock_classify.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # create_database edge cases
 # ---------------------------------------------------------------------------

@@ -1,3 +1,10 @@
+"""Run the main embedding pipeline for one normalized config.
+
+This module coordinates database creation, optional embedding-table export,
+optional recognizer execution, and cleanup of temporary database outputs. It is
+the main implementation behind the app-level `embed(config)` entrypoint.
+"""
+
 import logging
 import time
 import shutil
@@ -5,7 +12,7 @@ from pathlib import Path
 
 from src.config import config_to_json
 from src.embed_create_db import _detect_glob_pattern, _scan_audio_files, create_database
-from src.embed_export_table import export_embeddings_table
+from src.db_to_table import run_recognizers_over_db, export_embeddings_table
 from src.resources import log_ram
 from src.version import PERCH_HOPLITE_VERSION, __version__
 
@@ -14,12 +21,44 @@ log = logging.getLogger(__name__)
 
 
 def _make_export_metadata(config: dict) -> dict[str, str]:
-    """Build parquet file-level metadata for exported embeddings."""
+    """Build parquet footer metadata for embedding export outputs.
+
+    This helper is called only by `embed()` immediately before
+    `export_embeddings_table(...)` is invoked.
+
+    Why it exists:
+    - Keep metadata construction in one place.
+    - Include runtime and config provenance in exported parquet files.
+
+    What it returns:
+    - `perch_runner.version`: runner package version.
+    - `perch_hoplite.version`: hoplite dependency version.
+    - `perch_runner.config_json`: normalized JSON snapshot of effective config.
+    """
     return {
         "perch_runner.version": __version__,
         "perch_hoplite.version": PERCH_HOPLITE_VERSION,
         "perch_runner.config_json": config_to_json(config, sort_keys=True),
     }
+
+
+def _select_classify_filetype(config: dict) -> str:
+    """Choose classifier output extension from config.
+
+    Called by `embed()` when recognizers are configured.
+
+    Behavior:
+    - If `config["classify"]` includes `"parquet"`, return `"parquet"`.
+    - Otherwise return `"csv"`.
+
+    Why this helper exists:
+    - Keep output-filetype selection logic in one function.
+    - Avoid spreading ad-hoc checks for `classify` values in the main pipeline.
+    """
+    classify_formats = set(config.get("classify") or [])
+    if "parquet" in classify_formats:
+        return "parquet"
+    return "csv"
 
 
 def embed(config: dict):
@@ -57,6 +96,24 @@ def embed(config: dict):
             embeddings_formats=embed_formats,
             output_template=config.get('embeddings_output_path_template'),
             parquet_metadata=_make_export_metadata(config),
+        )
+
+    recognizers = config.get("recognizers", [])
+    if recognizers:
+        classify_filetype = _select_classify_filetype(config)
+        log.info(
+            "Running recognizers (%d config(s), output=%s)...",
+            len(recognizers),
+            classify_filetype,
+        )
+        run_recognizers_over_db(
+            db_path=db_path,
+            output_parent=output_root,
+            recognizers=recognizers,
+            classify_filetype=classify_filetype,
+            output_template=(
+                config.get('classify_output_path_template')
+            ),
         )
 
     # Clean up database only if: (1) save_db is false AND (2) DB was created by this run (didn't exist before)
