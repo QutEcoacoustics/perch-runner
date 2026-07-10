@@ -52,6 +52,8 @@ docker run --rm \
 | `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--dataset_name` | Dataset name used in runner configuration | `search_set` |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
+| `--sourcemap_preset` | Optional preset used to rewrite the output `source` value (for embeddings and recognizer outputs) | None |
+| `--sourcemap_token_vals` | Optional JSON object of token values injected into the selected sourcemap preset | None |
 | `--save_db` | Persist the hoplite embedding database. Use --save_db with no value to enable (default: false) | `false` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
 | `--workers` | Worker count or `auto` | `auto` |
@@ -194,6 +196,27 @@ Location for the internal embedding database.
 
 - Relative paths are resolved under `--output`.
 - Default is `db`, which resolves to `<output>/db`.
+
+#### --sourcemap_preset
+
+Selects a hardcoded sourcemap preset that rewrites the exported `source` column.
+
+- If unset, the original source path is written unchanged.
+- Current preset: `canonical_name_to_original_recording_url`
+- This preset extracts `audio_recording_id` from canonical names like `..._909057.flac` and renders:
+  - `{domain}/audio_recordings/{audio_recording_id}/original`
+
+Example:
+
+- `analyze --embed --sourcemap_preset canonical_name_to_original_recording_url --sourcemap_token_vals '{"domain":"https://api.ecosounds.org"}'`
+
+#### --sourcemap_token_vals
+
+JSON object (CLI string or config file object) used to provide values for sourcemap template tokens.
+
+- Requires `--sourcemap_preset`.
+- Keys must be simple token names (letters, numbers, underscore).
+- For `canonical_name_to_original_recording_url`, supply `domain`.
 
 #### --save_db
 

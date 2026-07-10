@@ -2,7 +2,12 @@ import re
 
 import pytest
 
-from src.sourcemap import apply_source_map, compile_source_pattern, create_sourcemap_function
+from src.sourcemap import (
+    apply_source_map,
+    build_sourcemap_from_preset,
+    compile_source_pattern,
+    create_sourcemap_function,
+)
 
 
 class TestCompileSourcePattern:
@@ -76,3 +81,44 @@ class TestCreateSourcemapFunction:
     def test_invalid_pattern_raises_early(self):
         with pytest.raises(ValueError):
             create_sourcemap_function(r"(bad", "template")
+
+
+class TestPresetSourcemap:
+    def test_no_preset_returns_none(self):
+        assert build_sourcemap_from_preset(None, None) is None
+
+    def test_unknown_preset_raises(self):
+        with pytest.raises(ValueError, match="Unknown sourcemap_preset"):
+            build_sourcemap_from_preset("not_a_real_preset", {"domain": "https://api.ecosounds.org"})
+
+    def test_canonical_name_preset_maps_to_url(self):
+        fn = build_sourcemap_from_preset(
+            "canonical_name_to_original_recording_url",
+            {"domain": "https://api.ecosounds.org"},
+        )
+
+        result = fn("site_0277/20210428T100000Z_Five-Rivers-Dry-A_909057.flac")
+        assert result == "https://api.ecosounds.org/audio_recordings/909057/original"
+
+    def test_canonical_name_preset_with_timezone_offset(self):
+        fn = build_sourcemap_from_preset(
+            "canonical_name_to_original_recording_url",
+            {"domain": "https://api.ecosounds.org"},
+        )
+
+        result = fn("site_0277/20210428T100000+1000_Five-Rivers-Dry-A_909057.wav")
+        assert result == "https://api.ecosounds.org/audio_recordings/909057/original"
+
+    def test_preset_no_match_returns_original(self):
+        fn = build_sourcemap_from_preset(
+            "canonical_name_to_original_recording_url",
+            {"domain": "https://api.ecosounds.org"},
+        )
+
+        # not a canonical filename — no timestamp prefix
+        result = fn("site_0277/not_a_canonical_name.flac")
+        assert result == "site_0277/not_a_canonical_name.flac"
+
+    def test_missing_required_token_raises(self):
+        with pytest.raises(ValueError, match="missing token values"):
+            build_sourcemap_from_preset("canonical_name_to_original_recording_url", {})

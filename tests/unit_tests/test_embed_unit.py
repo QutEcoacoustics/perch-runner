@@ -86,3 +86,38 @@ class TestEmbedPipeline:
 
         assert db_path.exists()
         assert marker.exists()
+
+    def test_sourcemap_passed_to_export_when_configured(self, tmp_path):
+        config = _base_config(
+            tmp_path,
+            sourcemap_preset="canonical_name_to_original_recording_url",
+            sourcemap_token_vals={"domain": "https://api.ecosounds.org"},
+        )
+
+        with mock.patch("src.embed.create_database", return_value=100.0), mock.patch(
+            "src.embed.export_embeddings_table"
+        ) as mock_export, mock.patch("src.embed.log_ram"):
+            embed.embed(config)
+
+        _, kwargs = mock_export.call_args
+        sourcemap_fn = kwargs["sourcemap"]
+        assert callable(sourcemap_fn)
+        mapped = sourcemap_fn("site_0277/20210428T100000Z_Five-Rivers-Dry-A_909057.flac")
+        assert mapped == "https://api.ecosounds.org/audio_recordings/909057/original"
+
+    def test_sourcemap_passed_to_recognizers_when_configured(self, tmp_path):
+        config = _base_config(
+            tmp_path,
+            recognizers=[object()],
+            sourcemap_preset="canonical_name_to_original_recording_url",
+            sourcemap_token_vals={"domain": "https://api.ecosounds.org"},
+        )
+
+        with mock.patch("src.embed.create_database", return_value=100.0), mock.patch(
+            "src.embed.run_recognizers_over_db"
+        ) as mock_run, mock.patch("src.embed.export_embeddings_table"), mock.patch("src.embed.log_ram"):
+            embed.embed(config)
+
+        _, kwargs = mock_run.call_args
+        sourcemap_fn = kwargs["sourcemap"]
+        assert callable(sourcemap_fn)

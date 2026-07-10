@@ -14,6 +14,7 @@ from src.config import config_to_json
 from src.embed_create_db import _detect_glob_pattern, _scan_audio_files, create_database
 from src.db_to_table import run_recognizers_over_db, export_embeddings_table
 from src.resources import log_ram
+from src.sourcemap import build_sourcemap_from_preset
 from src.version import PERCH_HOPLITE_VERSION, __version__
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,10 @@ def embed(config: dict):
 
     
     save_db = config.get('save_db', False)
+    sourcemap = build_sourcemap_from_preset(
+        config.get("sourcemap_preset"),
+        config.get("sourcemap_token_vals"),
+    )
 
     if config['embed']:
         export_embeddings_table(
@@ -75,6 +80,7 @@ def embed(config: dict):
             table_format=config['embeddings_table_format'],
             filetype=config["embeddings_table_filetype"],
             output_template=config["embeddings_output_path_template"],
+            sourcemap=sourcemap,
             parquet_metadata=_make_export_metadata(config),
         )
 
@@ -86,7 +92,7 @@ def embed(config: dict):
             recognizers=recognizers,
             recognizer_results_filetype=config["recognizer_results_filetype"],
             output_template=config['recognizer_output_path_template'],
-            sourcemap=None, # TODO: resolve sourcemap in config,
+            sourcemap=sourcemap,
             parquet_metadata=_make_export_metadata(config),
         )
 

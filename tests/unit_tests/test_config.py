@@ -159,3 +159,44 @@ class TestLoadConfig:
             config = load_config(str(config_file), None)
 
         assert config["embed"] is False
+
+    def test_sourcemap_token_vals_json_string_from_cli(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            embed=True,
+            sourcemap_preset="canonical_name_to_original_recording_url",
+            sourcemap_token_vals='{"domain": "https://api.ecosounds.org"}',
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["sourcemap_preset"] == "canonical_name_to_original_recording_url"
+        assert config["sourcemap_token_vals"] == {"domain": "https://api.ecosounds.org"}
+
+    def test_sourcemap_token_vals_without_preset_raises(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            embed=True,
+            sourcemap_token_vals={"domain": "https://api.ecosounds.org"},
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="sourcemap_token_vals requires sourcemap_preset"):
+            load_config(None, args)
+
+    def test_invalid_sourcemap_preset_raises(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            embed=True,
+            sourcemap_preset="not_real",
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="Invalid sourcemap_preset value"):
+            load_config(None, args)

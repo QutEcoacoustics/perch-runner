@@ -22,6 +22,7 @@ from src.recognizer_utils import (
     resolve_model_choice_for_recognizers,
     validate_recognizers,
 )
+from src.sourcemap import get_sourcemap_preset_names
 
 default_config_dir = "/mnt/config/"
 
@@ -41,6 +42,7 @@ valid_values = {
     "recognizer_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
     "output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
     "save_db": [True, False],
+    "sourcemap_preset": get_sourcemap_preset_names(),
 }
 
 
@@ -57,6 +59,8 @@ all_config_options = {
     "dataset_name": ("search_set", "dataset name used in runner configuration"),
     "workers": ("auto", "number of worker threads for embedding, or 'auto' (default) to choose based on available RAM."),
     "db_path": ("db", "database output path. Relative paths are resolved under --output (default: db)"),
+    "sourcemap_preset": (None, "optional source remapping preset name for output source values"),
+    "sourcemap_token_vals": (None, "optional JSON object/dict of token values injected into sourcemap presets"),
 
     "embed": (None, "enable embedding export (boolean flag). Use --embeddings_table_format and --embeddings_table_filetype to control output format."),
     "embeddings_table_format": ("serialized", "table format for embeddings, e.g. serialized, columns"),
@@ -289,6 +293,29 @@ def validate_classify_config(explicit_config):
     validate_single_value(explicit_config, "classify_filetype")
 
 
+def validate_sourcemap_config(explicit_config):
+    """Validate and normalize sourcemap-related config values."""
+    validate_single_value(explicit_config, "sourcemap_preset")
+
+    if "sourcemap_token_vals" in explicit_config:
+        token_vals = explicit_config["sourcemap_token_vals"]
+        if isinstance(token_vals, str):
+            try:
+                token_vals = json.loads(token_vals)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid sourcemap_token_vals JSON: {e}") from e
+
+        if token_vals is None:
+            explicit_config["sourcemap_token_vals"] = None
+        elif not isinstance(token_vals, dict):
+            raise ValueError("sourcemap_token_vals must be a dictionary or a JSON object string")
+        else:
+            explicit_config["sourcemap_token_vals"] = token_vals
+
+    if explicit_config.get("sourcemap_token_vals") and not explicit_config.get("sourcemap_preset"):
+        raise ValueError("sourcemap_token_vals requires sourcemap_preset")
+
+
 
 def load_config(config_path=None, args=None):
     """
@@ -333,6 +360,7 @@ def load_config(config_path=None, args=None):
     validate_embedding_config(explicit_config)
     validate_recognizer_config(explicit_config, config_file)
     validate_classify_config(explicit_config)
+    validate_sourcemap_config(explicit_config)
 
     
     normalize_bool_string(explicit_config, 'save_db')
