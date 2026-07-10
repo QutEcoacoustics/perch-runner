@@ -13,8 +13,6 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import ClassVar
 
-#DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE = "{parents}/{basename}/{analysis}{ext}"
-#DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE = "{classifier_name}/{parents}/{basename}/{analysis}{ext}"
 
 DEFAULT_PATH_TYPE = "flat"
 
@@ -91,7 +89,7 @@ def render_output_relative_path(
     """
     
     # bit of a hack to determine which template type we are rendering for, since the caller doesn't pass that in.
-    # todo: why doesn't it pass it?
+    # if we pass in recognizer_name it implies we should use the recognizers template type
     template_type = "recognizers" if recognizer_name is not None else "embeddings"
 
     template = validate_output_path_template(template, template_type=template_type)
@@ -112,7 +110,7 @@ def render_output_relative_path(
             if token_placeholder in template:
                 raise ValueError(f"Template contains token {token_placeholder} but no value is provided")
         else:
-                return rendered.replace(token_placeholder, str(value))
+            return rendered.replace(token_placeholder, str(value))
         return rendered
 
     rendered = template

@@ -259,6 +259,7 @@ def run_recognizers_over_db(
         log.warning("No embeddings found in database - nothing to classify.")
         return
 
+    # cfg is a ClassifierConfigList which uses "classifer_name" to refer to what we call "recognizer_name" for templating purposes. 
     recognizer_names = [cfg.classifier_name for cfg in recognizers.configs]
 
     dest_paths_map = {
@@ -316,7 +317,7 @@ def run_recognizers_over_db(
                     item.error or item.message or f"unknown failure ({item.config.classifier_name})"
                     for item in failed
                 )
-                raise RuntimeError(f"Classification failed for {recognizer_output_dest}: {errors}")
+                raise RuntimeError(f"Classification failed for {source}: {errors}")
 
             for item in results:
                 result_table = item.result_table

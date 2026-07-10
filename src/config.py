@@ -65,7 +65,7 @@ all_config_options = {
     "embeddings_output_path_type": (None, "preset output path type for embeddings: flat_basename, nested_basename, nested, flat"),
 
     "recognizers": (None, "path to recognizers JSON file. The file may contain either a recognizers list/dict or an object with a top-level 'recognizers' key."),
-    "recognizer_output_path_template": (None, "custom output path template for recognizer result files. Supported tokens: {recognizer_name}, {parents}, {basename}, {ext}, {analysis}."),
+    "recognizer_output_path_template": (None, "custom output path template for recognizer result files. Supported tokens: {classifier_name}, {parents}, {basename}, {ext}, {analysis}."),
     "recognizer_output_path_type": (None, "preset output path type for recognizer results: flat_basename, nested_basename, nested, flat"),
     "recognizer_results_filetype": ("csv", "file format for recognizer results"),
 
@@ -368,7 +368,7 @@ def load_config(config_path=None, args=None):
             config['workers'] = 'auto'
 
     # Normalize db_path: relative paths are resolved under output.
-    db_path_val = config.get('db_path') or all_config_options['db_path'][0]
+    db_path_val = config['db_path']
     db_path = Path(db_path_val)
     if db_path.is_absolute():
         config['db_path'] = db_path

@@ -35,15 +35,20 @@ docker run --rm \
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--embed [format]` | Generate embeddings. Examples: `parquet`, `csv`, `parquet-columns`, `csv-columns` | `parquet` |
-| `--classify [format]` | Perch global classification mode selector (accepted values: `parquet`, `csv`, `hoplite`; currently not implemented) | `csv` |
-| `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
-| `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
+| `--embed` | Enable embedding export (boolean flag). Use `--embed` with no value to enable | `false` |
 | `--embeddings_table_format` | Table layout: `serialized` or `columns` | `serialized` |
+| `--embeddings_table_filetype` | File format for the embedding table: `parquet` or `csv` | `parquet` |
 | `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{basename}`, `{ext}`, `{embeddings_table_format}`, `{analysis}` | `{parents}/{basename}/{analysis}{ext}` |
 | `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
-| `--classify_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{classifier_name}/{parents}/{basename}/{analysis}{ext}` |
-| `--classify_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--classify` | Enable Perch global classification output (boolean flag). Use `--classify` with no value to enable | `false` |
+| `--classify_filetype` | File format for classification output: `parquet` or `csv` | `csv` |
+| `--classify_output_path_template` | Output path template for classification files | None |
+| `--classify_output_path_type` | Preset output layout for classification files: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
+| `--recognizer_results_filetype` | File format for recognizer results: `parquet` or `csv` | `csv` |
+| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{recognizer_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{recognizer_name}/{parents}/{basename}/{analysis}{ext}` |
+| `--recognizer_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
 | `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--dataset_name` | Dataset name used in runner configuration | `search_set` |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
@@ -60,25 +65,14 @@ docker run --rm \
 
 ### Analyze Option Details
 
-#### --embed [format]
+#### --embed
 
-Controls embedding export outputs.
+Enables embedding export. This is a boolean flag.
 
-- `--embed` with no value defaults to `parquet`.
-- in the format `<filetype>` or `<filetype>-<table_format_type>`
-- Accepted filetypes are `parquet` and `csv`.
-- You can specify values as:
-  - filetype only: `parquet`, `csv`
-  - filetype with explicit table format: `parquet-serialized`, `parquet-columns`, `csv-serialized`, `csv-columns`
-- Multiple values can be comma-separated, for example:
-  - `--embed parquet,csv`
-  - `--embed parquet-columns,csv-serialized`
-
-How filetype-only values expand:
-
-- If you set `--embeddings_table_format serialized` (default), `parquet` becomes `parquet-serialized`.
-- If you set `--embeddings_table_format columns`, `parquet` becomes `parquet-columns`.
-- If you set `--embeddings_table_format serialized,columns`, `parquet` expands to both table formats.
+- `--embed` or `--embed true`: enable embedding export.
+- `--embed false`: explicitly disable (overrides a config file that enables it).
+- Use `--embeddings_table_format` and `--embeddings_table_filetype` to control the output format.
+- Setting any `--embeddings_*` key (e.g. `--embeddings_table_format columns`) implicitly enables embed unless `--embed false` is also set.
 
 #### --embeddings_table_format
 
@@ -153,46 +147,46 @@ Runs embeddings through one or more linear classifiers (embeddings-classifier) a
 
 - Accepts a path to a JSON file containing a `recognizers` list, or a bare list directly.
 - Each recognizer produces its own output file per source recording by default.
-- Output path controlled by `--classify_output_path_template` or `--classify_output_path_type`.
+- Output path controlled by `--recognizer_output_path_template` or `--recognizer_output_path_type`.
 - When recognizers are configured, `model_choice` is derived automatically from the recognizer metadata unless explicitly set.
 
-#### --classify_output_path_template
+#### --recognizer_output_path_template
 
 Output path template for recognizer result files. Controls where results are written within `<output>/`.
 
 - Supported tokens:
-  - `{classifier_name}` the recognizer's classifier name
+  - `{recognizer_name}` the recognizer's name
   - `{parents}` parent directories of the source audio file
   - `{basename}` basename of the source audio file, without extension
   - `{ext}` output file extension, e.g. `.csv`, `.parquet`
   - `{analysis}` the output type — for recognizer results this is always `recognizer_results`
 - Must be a relative path.
 - Must not contain `..` path traversal.
-- Default: `{classifier_name}/{parents}/{basename}/{analysis}{ext}`
+- Default: `{recognizer_name}/{parents}/{basename}/{analysis}{ext}`
 
 Examples:
 
-- `{classifier_name}/{parents}/{basename}/{analysis}{ext}` (default — one directory per classifier, mirroring source structure)
-- `{classifier_name}/{analysis}{ext}` (one flat file per classifier, all recordings merged)
-- `{analysis}{ext}` (single file, all classifiers and recordings merged — use with care)
+- `{recognizer_name}/{parents}/{basename}/{analysis}{ext}` (default — one directory per recognizer, mirroring source structure)
+- `{recognizer_name}/{analysis}{ext}` (one flat file per recognizer, all recordings merged)
+- `{analysis}{ext}` (single file, all recognizers and recordings merged — use with care)
 
-#### --classify_output_path_type
+#### --recognizer_output_path_type
 
-Preset output paths for recognizer results (mutually exclusive with `classify_output_path_template`):
+Preset output paths for recognizer results (mutually exclusive with `--recognizer_output_path_template`):
 
 - `flat_basename` -> `{basename}{ext}`
 - `nested_basename` -> `{parents}/{basename}{ext}`
 - `nested` -> `{parents}/{basename}{ext}`
 - `flat` -> `{analysis}{ext}` (all recordings for all recognizers in a single file)
 
-Note: these presets do not include `{classifier_name}`, so results from multiple recognizers will be merged into the same file. Add a `classify_output_path_template` with `{classifier_name}` if you need per-classifier separation.
+Note: these presets do not include `{recognizer_name}`, so results from multiple recognizers will be merged into the same file. Add a `--recognizer_output_path_template` with `{recognizer_name}` if you need per-recognizer separation.
 
 #### --output_path_type
 
 Applies a preset layout to both embeddings and recognizer results at once. The more specific `embeddings_output_path_type` and `classify_output_path_type` take priority if also set.
 
 - Accepted values: `flat_basename`, `nested_basename`, `nested`, `flat`
-- Equivalent to setting both `embeddings_output_path_type` and `classify_output_path_type` to the same value.
+- Equivalent to setting both `--embeddings_output_path_type` and `--recognizer_output_path_type` to the same value.
 
 #### --db_path
 
@@ -215,8 +209,8 @@ Controls whether the hoplite embedding database is saved after processing.
 Usage examples:
 
 - DB only: `analyze --save_db` (creates and saves the database, no embeddings exported)
-- Embeddings only: `analyze --embed parquet` (creates embeddings, database is deleted after)
-- Both: `analyze --embed parquet --save_db` (creates embeddings, saves database)
+- Embeddings only: `analyze --embed` (creates embeddings, database is deleted after)
+- Both: `analyze --embed --save_db` (creates embeddings, saves database)
 
 #### --workers
 
