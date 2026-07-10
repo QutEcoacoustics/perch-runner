@@ -42,25 +42,6 @@ def _make_export_metadata(config: dict) -> dict[str, str]:
     }
 
 
-def _select_classify_filetype(config: dict) -> str:
-    """Choose classifier output extension from config.
-
-    Called by `embed()` when recognizers are configured.
-
-    Behavior:
-    - If `config["classify"]` includes `"parquet"`, return `"parquet"`.
-    - Otherwise return `"csv"`.
-
-    Why this helper exists:
-    - Keep output-filetype selection logic in one function.
-    - Avoid spreading ad-hoc checks for `classify` values in the main pipeline.
-    """
-    classify_formats = set(config.get("classify") or [])
-    if "parquet" in classify_formats:
-        return "parquet"
-    return "csv"
-
-
 def embed(config: dict):
     t_start = time.monotonic()
 
@@ -84,36 +65,29 @@ def embed(config: dict):
         log.exception("ERROR: Embedding failed")
         raise
 
-    embed_formats = config['embed']  # list of EmbeddingsFormat
+    
     save_db = config.get('save_db', False)
 
-    if embed_formats:
-        log.info("Exporting embeddings to files (%s)...", 
-                 ", ".join(f"{ef.filetype}/{ef.table_format}" for ef in embed_formats))
+    if config['embed']:
         export_embeddings_table(
             db_path=db_path,
             output_path=output_root,
-            embeddings_formats=embed_formats,
-            output_template=config.get('embeddings_output_path_template'),
+            table_format=config['embeddings_table_format'],
+            filetype=config["embeddings_table_filetype"],
+            output_template=config["embeddings_output_path_template"],
             parquet_metadata=_make_export_metadata(config),
         )
 
     recognizers = config.get("recognizers", [])
     if recognizers:
-        classify_filetype = _select_classify_filetype(config)
-        log.info(
-            "Running recognizers (%d config(s), output=%s)...",
-            len(recognizers),
-            classify_filetype,
-        )
         run_recognizers_over_db(
             db_path=db_path,
             output_parent=output_root,
             recognizers=recognizers,
-            classify_filetype=classify_filetype,
-            output_template=(
-                config.get('classify_output_path_template')
-            ),
+            recognizer_results_filetype=config["recognizer_results_filetype"],
+            output_template=config['recognizer_output_path_template'],
+            sourcemap=None, # TODO: resolve sourcemap in config,
+            parquet_metadata=_make_export_metadata(config),
         )
 
     # Clean up database only if: (1) save_db is false AND (2) DB was created by this run (didn't exist before)

@@ -8,6 +8,14 @@ tables or recognizer outputs.
 import re
 from pathlib import Path
 
+# todo: preset for ecosounds mapping
+sourcemap_presets = {
+    "ecosounds_canonical": {
+        "pattern": "",
+        "template": "",
+    }
+}
+
 
 def compile_source_pattern(pattern: str) -> re.Pattern:
     """Compile a user-supplied regex, raising ValueError on invalid patterns."""

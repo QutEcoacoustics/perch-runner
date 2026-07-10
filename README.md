@@ -36,11 +36,11 @@ docker run --rm \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--embed [format]` | Generate embeddings. Examples: `parquet`, `csv`, `parquet-columns`, `csv-columns` | `parquet` |
-| `--classify [format]` | Classification mode selector (accepted values: `parquet`, `csv`, `hoplite`; currently not implemented) | `csv` |
-| `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-classifier result files | None |
+| `--classify [format]` | Perch global classification mode selector (accepted values: `parquet`, `csv`, `hoplite`; currently not implemented) | `csv` |
+| `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
 | `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
-| `--embedding_table_format` | Table layout: `serialized` or `columns` | `serialized` |
-| `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{basename}`, `{ext}`, `{embedding_table_format}`, `{analysis}` | `{parents}/{basename}/{analysis}{ext}` |
+| `--embeddings_table_format` | Table layout: `serialized` or `columns` | `serialized` |
+| `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{basename}`, `{ext}`, `{embeddings_table_format}`, `{analysis}` | `{parents}/{basename}/{analysis}{ext}` |
 | `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--classify_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{classifier_name}/{parents}/{basename}/{analysis}{ext}` |
 | `--classify_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
@@ -76,11 +76,11 @@ Controls embedding export outputs.
 
 How filetype-only values expand:
 
-- If you set `--embedding_table_format serialized` (default), `parquet` becomes `parquet-serialized`.
-- If you set `--embedding_table_format columns`, `parquet` becomes `parquet-columns`.
-- If you set `--embedding_table_format serialized,columns`, `parquet` expands to both table formats.
+- If you set `--embeddings_table_format serialized` (default), `parquet` becomes `parquet-serialized`.
+- If you set `--embeddings_table_format columns`, `parquet` becomes `parquet-columns`.
+- If you set `--embeddings_table_format serialized,columns`, `parquet` expands to both table formats.
 
-#### --embedding_table_format
+#### --embeddings_table_format
 
 Controls table layout for embed outputs that do not explicitly include a table format.
 
@@ -124,7 +124,7 @@ using a template.
   - `{parents}` the parent directories of the audio file, relative to the source directory
   - `{basename}` the basename of the audio file, without the extension
   - `{ext}` the extension of the output format, e.g. `.parquet`, `.csv`
-  - `{embedding_table_format}` the table format e.g. `serialized` or `columns`
+  - `{embeddings_table_format}` the table format e.g. `serialized` or `columns`
   - `{analysis}` the output type — for embeddings this is always `embeddings`
 - Must be a relative path.
 - Must not contain `..` path traversal.
@@ -132,9 +132,9 @@ using a template.
 Examples:
 
 - `{parents}/{basename}/{analysis}{ext}` (default — renders to e.g. `site1/recording.wav/embeddings.parquet`)
-- `{parents}/{basename}/{embedding_table_format}/embeddings{ext}`
+- `{parents}/{basename}/{embeddings_table_format}/embeddings{ext}`
 
-If exporting both parquet table formats, include `{embedding_table_format}` in the template to avoid path collisions.
+If exporting both parquet table formats, include `{embeddings_table_format}` in the template to avoid path collisions.
 
 If more than one source audio files map to the same output file, they will all be included in the same output file.
 
@@ -288,7 +288,7 @@ Audio files are discovered relative to the source directory. Output mirrors that
 
 Each Parquet file contains one row per 5-second window with columns: `source`, `channel`, `offset`, `embeddings` (serialized numpy array).
 
-With `--embedding_table_format columns`, the `embeddings` column is replaced by individual dimension columns (`f0000`, `f0001`, ...).
+With `--embeddings_table_format columns`, the `embeddings` column is replaced by individual dimension columns (`f0000`, `f0001`, ...).
 
 ### Config File
 
@@ -299,7 +299,7 @@ source: /mnt/input
 output: /mnt/output
 embed: parquet
 model_choice: perch_v2
-embedding_table_format: serialized
+embeddings_table_format: serialized
 file_glob: "*/*"
 ```
 

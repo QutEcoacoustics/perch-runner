@@ -29,7 +29,7 @@ def test_run_recognizers_over_db_classifies_each_source_once(tmp_path, monkeypat
 
     monkeypatch.setattr(db_to_table, "_load_db_and_group_windows", fake_load_db_and_group_windows)
 
-    def fake_build_rows(source_value, entries, _embedding_table_format, _db):
+    def fake_build_rows(source_value, entries, _embeddings_table_format, _db):
         return pd.DataFrame({
             "source": [source_value] * len(entries),
             "channel": [0] * len(entries),
@@ -69,7 +69,8 @@ def test_run_recognizers_over_db_classifies_each_source_once(tmp_path, monkeypat
         db_path=tmp_path / "fake_db",
         output_parent=tmp_path,
         recognizers=_load_koala_recognizers(),
-        classify_filetype="csv",
+        recognizer_results_filetype="csv",
+        sourcemap=None,
         output_template="results{ext}",
     )
 

@@ -13,20 +13,21 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import ClassVar
 
-DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE = "{parents}/{basename}/{analysis}{ext}"
+#DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE = "{parents}/{basename}/{analysis}{ext}"
+#DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE = "{classifier_name}/{parents}/{basename}/{analysis}{ext}"
 
-DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE = "{classifier_name}/{parents}/{basename}/{analysis}{ext}"
+DEFAULT_PATH_TYPE = "flat"
 
 ALLOWED_OUTPUT_TEMPLATE_TOKENS = {
-    "embeddings": frozenset({"parents", "basename", "ext", "embedding_table_format", "analysis"}),
+    "embeddings": frozenset({"parents", "basename", "ext", "embeddings_table_format", "analysis"}),
     "recognizers": frozenset({"classifier_name", "parents", "basename", "ext", "analysis"}),
 }
 
 # preset templates for output paths
 OUTPUT_PATH_TYPE_TEMPLATES = {
-    "flat_basename": "{basename}{ext}",
     "nested_basename": "{parents}/{basename}{ext}",
-    "nested": "{parents}/{basename}{ext}",
+    "flat_basename": "{basename}{ext}",
+    "nested": "{parents}/{analysis}{ext}",
     "flat": "{analysis}{ext}",
 }
 
@@ -79,17 +80,20 @@ def render_output_relative_path(
         audio_file,
         analysis,
         ext,
-        embedding_table_format = None,
-        classifier_name = None
+        embeddings_table_format = None,
+        recognizer_name = None
 ):
     """Render a relative output path from template tokens.
-    todo: change to render_output_relative_path, and see why we need this nested in that other function
     Applies extension rules:
     - If {ext} is absent: append extension.
     - If rendered already ends with extension: keep it.
     - If rendered has a mismatching hardcoded extension: warn and append.
     """
-    template_type = "embeddings" if analysis == "embed" else "recognizers"
+    
+    # bit of a hack to determine which template type we are rendering for, since the caller doesn't pass that in.
+    # todo: why doesn't it pass it?
+    template_type = "recognizers" if recognizer_name is not None else "embeddings"
+
     template = validate_output_path_template(template, template_type=template_type)
 
     audio_rel = Path(audio_file)
@@ -116,9 +120,9 @@ def render_output_relative_path(
     rendered = replace_val("parents", parents)
     rendered = replace_val("basename", basename)
     rendered = replace_val("ext", ext)
-    rendered = replace_val("embedding_table_format", embedding_table_format)
+    rendered = replace_val("embeddings_table_format", embeddings_table_format)
     rendered = replace_val("analysis", analysis)
-    rendered = replace_val("classifier_name", classifier_name)
+    rendered = replace_val("classifier_name", recognizer_name)
 
 
     rendered = rendered.replace("\\", "/")
@@ -155,32 +159,49 @@ def ensure_output_path_within_root(relative_path, output_root):
     return abs_path
 
 
-def resolve_template_paths(config):
-    """Resolve and validate output path templates based on config."""
 
-    # use the preset template (output path type) if provided
-    if config["embeddings_output_path_type"] is not None:
-        config["embeddings_output_path_template"] = OUTPUT_PATH_TYPE_TEMPLATES[
-            config["embeddings_output_path_type"]
-        ]
 
-    # validate the templates if provided, or set defaults
-    if config["embeddings_output_path_template"] is not None:
-        config["embeddings_output_path_template"] = validate_output_path_template(
-            config["embeddings_output_path_template"], template_type="embeddings"
-        )
-    else:
-        # Default behavior when neither explicit template nor type is provided.
-        config["embeddings_output_path_template"] = DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
 
-    if config["classify_output_path_type"] is not None:
-        config["classify_output_path_template"] = OUTPUT_PATH_TYPE_TEMPLATES[
-            config["classify_output_path_type"]
-        ]
 
-    if config["classify_output_path_template"] is not None:
-        config["classify_output_path_template"] = validate_output_path_template(
-            config["classify_output_path_template"], template_type="recognizers"
-        )
-    else:
-        config["classify_output_path_template"] = DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE
+def validate_and_resolve_template_config(config):
+    """specified or default presets with specified or default templates."""
+
+
+    # this will be used as the default where analysis type specific output path types are not provided
+    output_path_type_val = config.get("output_path_type")
+
+    def process_for_analysis_type(
+            analysis_output_path_template, # e.g. embeddings_output_path_template or recognizer_output_path_template
+            analysis_output_path_type, # e.g. embeddings_output_path_type or recognizer_output_path_type
+            analysis_type, # e.g. embeddings or recognizers
+            ):
+        
+        if config.get(analysis_output_path_template) is not None and config.get(analysis_output_path_type) is not None:
+            # it doesn't make sense for the user to provide both a template string and a template type, 
+            # since the types are just preset template strings
+            raise ValueError(
+                "Cannot specify both {} and {}".format(analysis_output_path_template, analysis_output_path_type)
+            )
+        
+        # the general "output_path_type" is used as the default if provided, applying to all analysis types
+        # this allows the user to set a single output path type for all analysis types
+        if config["output_path_type"] is not None:
+            default_path_type = config["output_path_type"]
+        else:
+            default_path_type = DEFAULT_PATH_TYPE
+
+        if config.get(analysis_output_path_type) is None:
+            config[analysis_output_path_type] = default_path_type
+
+        if config.get(analysis_output_path_template) is None:
+            config[analysis_output_path_template] = OUTPUT_PATH_TYPE_TEMPLATES[config[analysis_output_path_type]]
+
+        # validates the template string
+        validate_output_path_template(config[analysis_output_path_template], template_type=analysis_type) 
+
+
+    # for each analysis type that uses templated output paths, resolve defaults and validate
+    process_for_analysis_type("embeddings_output_path_template", "embeddings_output_path_type", "embeddings")
+    process_for_analysis_type("recognizer_output_path_template", "recognizer_output_path_type", "recognizers")
+ 
+

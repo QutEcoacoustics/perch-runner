@@ -1,12 +1,11 @@
-"""Unit tests for app module-level initialization and model-choice resolution."""
+"""Unit tests for app module-level initialization and parser surface."""
 
 import os
-from types import SimpleNamespace
-
-import pytest
+import argparse
 
 # Import app module to trigger TF_CPP_MIN_LOG_LEVEL setup
 from src import app  # noqa: F401
+from src.config import default_config
 
 
 class TestModuleLevel:
@@ -20,48 +19,45 @@ class TestModuleLevel:
         assert os.environ["TF_CPP_MIN_LOG_LEVEL"] in ("1", "2", "3")
 
 
-class TestRecognizerModelChoiceResolution:
+class TestAnalyzeParserSurface:
 
-    def test_infers_model_choice_from_embedding_dim(self):
-        config = {
-            "model_choice": "perch_v2",
-            "recognizers": [{"classifier": {"classes": ["owl"]}}],
+    def test_analyze_parser_keys_match_config_keys(self):
+        """Parser args should match config keys, except for config_file."""
+        parser = app.get_parser()
+        subparsers_action = next(
+            action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+        )
+        analyze_parser = subparsers_action.choices["analyze"]
+
+        analyze_dests = {
+            action.dest
+            for action in analyze_parser._actions
+            if action.dest != "help"
         }
-        classifier_config_list = SimpleNamespace(
-            embedding_model_name=None,
-            embedding_dim=(1280,),
-        )
 
-        with pytest.warns(UserWarning, match="Embedding model name not provided"):
-            resolved = app._resolve_model_choice_for_recognizers(
-                config,
-                model_choice_explicit=False,
-                classifier_config_list=classifier_config_list,
-            )
+        expected_dests = set(default_config.keys()) | {"config_file"}
+        assert analyze_dests == expected_dests
 
-        assert resolved["model_choice"] == "perch_8"
+    def test_parser_accepts_path_type_and_dataset_flags(self, tmp_path):
+        """Analyze parser accepts the output path and dataset flags passed to config."""
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
 
-    def test_raises_when_embedding_dim_is_ambiguous(self, monkeypatch):
-        config = {
-            "model_choice": "perch_v2",
-            "recognizers": [{"classifier": {"classes": ["owl"]}}],
-        }
-        classifier_config_list = SimpleNamespace(
-            embedding_model_name=None,
-            embedding_dim=(1280,),
-        )
-        monkeypatch.setattr(
-            app,
-            "MODELS",
-            {
-                "a": {"embedding_dim": 1280},
-                "b": {"embedding_dim": 1280},
-            },
-        )
+        parser = app.get_parser()
+        args = parser.parse_args([
+            "analyze",
+            "--source", str(source),
+            "--output", str(output),
+            "--embed",
+            "--classify_output_path_template", "{analysis}{ext}",
+            "--classify_output_path_type", "flat",
+            "--output_path_type", "nested",
+            "--dataset_name", "demo_set",
+        ])
 
-        with pytest.raises(ValueError, match="embedding model name not provided, and can't be determined from embedding dimension"):
-            app._resolve_model_choice_for_recognizers(
-                config,
-                model_choice_explicit=False,
-                classifier_config_list=classifier_config_list,
-            )
+        assert args.classify_output_path_template == "{analysis}{ext}"
+        assert args.classify_output_path_type == "flat"
+        assert args.output_path_type == "nested"
+        assert args.dataset_name == "demo_set"

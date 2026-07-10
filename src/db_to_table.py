@@ -2,7 +2,7 @@
 
 This module reads the database produced by the embedding stage, groups rows by
 source recording, writes embedding tables in CSV or parquet form, and runs
-embeddings-based recognizers to produce per-classifier output files.
+embeddings-based recognizers to produce per-recognizer output files.
 
 The functionality writing embeddings to tables and running recognizers shares a lot of common logic.
 That is the reason they are grouped together here. 
@@ -14,6 +14,11 @@ Things like
 - appending output to in-progress files
 - cleaning up in-progress files by deduping, sorting, and renaming to final output
 are all shared between the two operations.
+
+
+Note on naming: in this app we use recognizer (and recognizer name etc) to refer to the embeddings-classifier linear classifiers, 
+and classify to refer to the perch global base model classification. However, confusingly, recognizers are run using the "embeddings-classifier" package
+which internally refers to them as "classifiers". So in this code there are references to recognizer_name and classifier_name, which are the same thing.
 
 """
 
@@ -27,11 +32,8 @@ import pyarrow.parquet as pq
 from perch_hoplite.db import sqlite_usearch_impl
 
 from src import data_frames
-from src.config import EmbeddingsFormat
 
 from src.output_paths import (
-    DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE,
-    DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE,
     ensure_output_path_within_root,
     render_output_relative_path,
 )
@@ -77,16 +79,16 @@ def _resolve_output_destination(
     source: str,
     analysis: str,
     output_path: Path,
-    embedding_table_format: str | None = None,
+    embeddings_table_format: str | None = None,
     filetype: str | None = None,
-    classifier_name: str | None = None,
+    recognizer_name: str | None = None,
 ) -> Path:
     """Render and validate output destination for one source item.
 
         Used by:
         - `export_embeddings_table(...)` to compute real export file destinations.
         - `run_recognizers_over_db(...)` to compute destination keys used for
-            source grouping and final classifier output file placement.
+            source grouping and final recognizer output file placement.
 
         Behavior:
         - Renders a relative path from `output_template` using source metadata,
@@ -102,8 +104,8 @@ def _resolve_output_destination(
         audio_file=source,
         analysis=analysis,
         ext=ext,
-        embedding_table_format=embedding_table_format,
-        classifier_name=classifier_name,
+        embeddings_table_format=embeddings_table_format,
+        recognizer_name=recognizer_name,
     )
     return ensure_output_path_within_root(rel_path, output_path)
 
@@ -111,9 +113,10 @@ def _resolve_output_destination(
 def export_embeddings_table(
     db_path: str | Path,
     output_path: str | Path,
-    embeddings_formats: list[EmbeddingsFormat],
+    table_format: str,
+    filetype: str,
+    output_template: str,
     sourcemap=None,
-    output_template=None,
     parquet_metadata: dict[str, str] | None = None,
 ):
     """Export embeddings from a perch-hoplite database to tabular files.
@@ -139,8 +142,6 @@ def export_embeddings_table(
     if sourcemap is None:
         sourcemap = lambda x: x
 
-    if output_template is None:
-        output_template = DEFAULT_EMBEDDINGS_OUTPUT_PATH_TEMPLATE
 
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -153,81 +154,79 @@ def export_embeddings_table(
     total_refs = sum(len(entries) for entries in data_by_source.values())
     log.info("Preparing %d embedding reference(s) from database...", total_refs)
 
-    log.info("Exporting %d source(s) to %d format(s)...",
-             len(data_by_source), len(embeddings_formats))
+    log.info("Exporting %d source(s) to %s %s format...",
+             len(data_by_source), filetype, table_format)
 
-    for embeddings_format in embeddings_formats:
-        filetype = embeddings_format.filetype
-        table_format = embeddings_format.table_format
 
-        # Precompute all destinations so we can clear stale in-progress files
-        # before any new writes begin.
+    # Precompute all destinations so we can clear stale in-progress files
+    # before any new writes begin.
 
-        # map sources to destinations for this format (each format can have a different destination due to {embedding_table_format} token and file extension)
-        dest_paths_map = {
-            source: _resolve_output_destination(
-                output_template,
-                source=source,
-                analysis="embeddings",
-                output_path=output_path,
-                embedding_table_format=table_format,
-                filetype=filetype
-            )
-            for source in data_by_source
-        }
+    # map sources to destinations for this format (each format can have a different destination due to {embeddings_table_format} token and file extension)
+    dest_paths_map = {
+        source: _resolve_output_destination(
+            output_template,
+            source=source,
+            analysis="embeddings",
+            output_path=output_path,
+            embeddings_table_format=table_format,
+            filetype=filetype
+        )
+        for source in data_by_source
+    }
 
-        dest_paths_set = set(dest_paths_map.values())
+    dest_paths_set = set(dest_paths_map.values())
 
-        # remove any in-progress files that might be left over from a previous failed run, to avoid appending to them by mistake. 
-        # This means we can't resume failed runs, but it's simpler than dealing with partial files. 
-        for dest in dest_paths_set:
+    # remove any in-progress files that might be left over from a previous failed run, to avoid appending to them by mistake. 
+    # This means we can't resume failed runs, but it's simpler than dealing with partial files. 
+    for dest in dest_paths_set:
+        dest_inprogress = dest.with_suffix(dest.suffix + '.inprogress')
+        if dest_inprogress.exists():
+            dest_inprogress.unlink()
+            log.info("Removed stale in-progress file %s", dest_inprogress)
+
+    # as we iterate through source, build the set of in-progress files we create so we can finalize them at the end
+    inprogress_paths = set()
+    parquet_writers: dict[Path, pq.ParquetWriter] = {}
+    try:
+        for i, (source, entries) in enumerate(data_by_source.items(), 1):
+            entries.sort(key=lambda x: x[0])
+            output_source_value = sourcemap(source)
+
+            dest = dest_paths_map[source]
+            df = build_rows(output_source_value, entries, table_format, db)
             dest_inprogress = dest.with_suffix(dest.suffix + '.inprogress')
-            if dest_inprogress.exists():
-                dest_inprogress.unlink()
-                log.info("Removed stale in-progress file %s", dest_inprogress)
+            dest.parent.mkdir(parents=True, exist_ok=True)
 
-        # as we iterate through source, build the set of in-progress files we create so we can finalize them at the end
-        inprogress_paths = set()
-        parquet_writers: dict[Path, pq.ParquetWriter] = {}
-        try:
-            for i, (source, entries) in enumerate(data_by_source.items(), 1):
-                entries.sort(key=lambda x: x[0])
-                output_source_value = sourcemap(source)
+            if filetype == 'parquet':
+                write_inprogress_parquet(dest_inprogress, df, parquet_writers)
+            elif filetype == 'csv':
+                write_inprogress_csv(dest_inprogress, df)
+            else:
+                raise ValueError(f"Unsupported filetype: {filetype}")
 
-                dest = dest_paths_map[source]
-                df = build_rows(output_source_value, entries, table_format, db)
-                dest_inprogress = dest.with_suffix(dest.suffix + '.inprogress')
-                dest.parent.mkdir(parents=True, exist_ok=True)
+            inprogress_paths.add(dest_inprogress)
+            log.info("  [%d/%d] Wrote %s (%d rows, %s/%s, inprogress)",
+                        i, len(data_by_source), dest_inprogress.name, len(df), filetype, table_format)
+    finally:
+        for writer in parquet_writers.values():
+            writer.close()
 
-                if filetype == 'parquet':
-                    write_inprogress_parquet(dest_inprogress, df, parquet_writers)
-                elif filetype == 'csv':
-                    write_inprogress_csv(dest_inprogress, df)
-                else:
-                    raise ValueError(f"Unsupported filetype: {filetype}")
-
-                inprogress_paths.add(dest_inprogress)
-                log.info("  [%d/%d] Wrote %s (%d rows, %s/%s, inprogress)",
-                         i, len(data_by_source), dest_inprogress.name, len(df), filetype, table_format)
-        finally:
-            for writer in parquet_writers.values():
-                writer.close()
-
-        for inprogress_path in inprogress_paths:
-            finalize_inprogress_file(
-                inprogress_path,
-                filetype,
-                parquet_metadata=parquet_metadata,
-            )
+    for inprogress_path in inprogress_paths:
+        finalize_inprogress_file(
+            inprogress_path,
+            filetype,
+            parquet_metadata=parquet_metadata,
+        )
 
 
 def run_recognizers_over_db(
     db_path: str | Path,
     output_parent: str | Path,
     recognizers,
-    classify_filetype: str = "csv",
-    sourcemap=None,
-    output_template=None,
+    recognizer_results_filetype: str,
+    sourcemap,
+    output_template,
+    parquet_metadata: dict[str, str] | None = None
 ):
     """Run embeddings-classifier over DB embeddings, writing results per source.
 
@@ -244,16 +243,13 @@ def run_recognizers_over_db(
         output_parent: output root directory.
         recognizers: Normalized `ClassifierConfigList` for
             `embeddings-classifier`.
-        classify_filetype: classifier output extension (`csv` or `parquet`).
+        recognizer_filetype: Output extension (`csv` or `parquet`).
         sourcemap: optional source-name remapper.
         output_template: optional path template; defaults to runner default.
     """
     from embeddings_classifier import classify_table
     if sourcemap is None:
         sourcemap = lambda x: x
-
-    if output_template is None:
-        output_template = DEFAULT_RECOGNIZER_OUTPUT_PATH_TEMPLATE
 
     output_parent = Path(output_parent)
     output_parent.mkdir(parents=True, exist_ok=True)
@@ -263,33 +259,29 @@ def run_recognizers_over_db(
         log.warning("No embeddings found in database - nothing to classify.")
         return
 
-    if classify_filetype not in {"csv", "parquet"}:
-        raise ValueError(f"Unsupported classify output filetype: {classify_filetype}")
-
-    classifier_names = [cfg.classifier_name for cfg in recognizers.configs]
-
+    recognizer_names = [cfg.classifier_name for cfg in recognizers.configs]
 
     dest_paths_map = {
         source: {
-            classifier_name: _resolve_output_destination(
+            recognizer_name: _resolve_output_destination(
                 output_template,
                 source=source,
                 analysis="recognizer_results",
                 output_path=output_parent,
-                filetype=classify_filetype,
-                classifier_name=classifier_name)
-            for classifier_name in classifier_names}
+                filetype=recognizer_results_filetype,
+                recognizer_name=recognizer_name)
+            for recognizer_name in recognizer_names}
         for source in data_by_source
     }
 
     # get a set of unique output paths so we can clear stale in-progress files before processing starts
     dest_paths_set = set()
-    for source, classifier_map in dest_paths_map.items():
-        for classifier_name, path in classifier_map.items():
+    for source, recognizer_map in dest_paths_map.items():
+        for recognizer_name, path in recognizer_map.items():
             dest_paths_set.add(path)
 
     log.info(
-        "Classifying %d source(s) into %d output group(s)...",
+        "Running recognizer(s) over %d source(s) into %d output group(s)...",
         len(data_by_source),
         len(dest_paths_set),
     )
@@ -298,15 +290,8 @@ def run_recognizers_over_db(
     inprogress_paths: set[Path] = set()
 
     # Clear stale in-progress outputs before processing starts.
-    # for classify_dest in dest_paths_set:
-    #     for classifier_name in classifier_names:
-    #         final_output = _classifier_output_path(classify_dest, classifier_name)
-    #         dest_inprogress = final_output.with_suffix(final_output.suffix + ".inprogress")
-    #         if dest_inprogress.exists():
-    #             dest_inprogress.unlink()
-    #             log.info("Removed stale in-progress file %s", dest_inprogress)
-    for classify_dest in dest_paths_set:
-        dest_inprogress = classify_dest.with_suffix(classify_dest.suffix + ".inprogress")
+    for recognizer_output_dest in dest_paths_set:
+        dest_inprogress = recognizer_output_dest.with_suffix(recognizer_output_dest.suffix + ".inprogress")
         if dest_inprogress.exists():
             dest_inprogress.unlink()
             log.info("Removed stale in-progress file %s", dest_inprogress)
@@ -315,14 +300,14 @@ def run_recognizers_over_db(
         for i, (source, entries) in enumerate(data_by_source.items(), 1):
             entries.sort(key=lambda x: x[0])
             output_source_value = sourcemap(source)
-            classify_dest = dest_paths_map[source]
+            recognizer_output_dest = dest_paths_map[source]
             source_df = build_rows(output_source_value, entries, "columns", db)
 
             results_written = 0
             table = pa.Table.from_pandas(source_df, preserve_index=False)
 
-            # output path is None because embeddings-classifier does not write output. We handle the writing  
-            # of output here in this app
+            # output path is None because we don't want embeddings-classifier to write output.
+            # We handle the writing of output here in this app
             results = classify_table(table, recognizers, output_path=None)
 
             failed = [item for item in results if not item.success]
@@ -331,21 +316,21 @@ def run_recognizers_over_db(
                     item.error or item.message or f"unknown failure ({item.config.classifier_name})"
                     for item in failed
                 )
-                raise RuntimeError(f"Classification failed for {classify_dest}: {errors}")
+                raise RuntimeError(f"Classification failed for {recognizer_output_dest}: {errors}")
 
             for item in results:
                 result_table = item.result_table
                 if result_table is None:
                     continue
 
-                classifier_name = item.config.classifier_name
-                classifier_output_file = classify_dest[classifier_name]
-                dest_inprogress = classifier_output_file.with_suffix(classifier_output_file.suffix + ".inprogress")
+                recognizer_name = item.config.classifier_name
+                recognizer_output_file = recognizer_output_dest[recognizer_name]
+                dest_inprogress = recognizer_output_file.with_suffix(recognizer_output_file.suffix + ".inprogress")
 
-                classifier_output_file.parent.mkdir(parents=True, exist_ok=True)
+                recognizer_output_file.parent.mkdir(parents=True, exist_ok=True)
 
                 result_df = result_table.to_pandas()
-                if classify_filetype == "parquet":
+                if recognizer_results_filetype == "parquet":
                     write_inprogress_parquet(dest_inprogress, result_df, parquet_writers)
                 else:
                     write_inprogress_csv(dest_inprogress, result_df)
@@ -366,7 +351,7 @@ def run_recognizers_over_db(
             writer.close()
 
     for inprogress_path in inprogress_paths:
-        finalize_inprogress_file(inprogress_path, classify_filetype)
+        finalize_inprogress_file(inprogress_path, recognizer_results_filetype, parquet_metadata=parquet_metadata)
 
 
 
@@ -413,9 +398,9 @@ def finalize_inprogress_file(
         raise
 
 
-def build_rows(source_value, entries: list[tuple[float, int]], embedding_table_format, db) -> pd.DataFrame:
+def build_rows(source_value, entries: list[tuple[float, int]], embeddings_table_format, db) -> pd.DataFrame:
     """Build a DataFrame for one source by fetching embeddings by window id."""
-    if embedding_table_format == 'columns':
+    if embeddings_table_format == 'columns':
         embeddings = [np.asarray(db.get_embedding(embedding_id), dtype=np.float32)
                       for _, embedding_id in entries]
         embeddings_matrix = np.vstack(embeddings)
