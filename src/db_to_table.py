@@ -110,6 +110,40 @@ def _resolve_output_destination(
     return ensure_output_path_within_root(rel_path, output_path)
 
 
+def _build_and_validate_sourcemap_sources(
+    data_by_source: dict[str, list[tuple[float, int]]],
+    sourcemap,
+) -> dict[str, str]:
+    """Build source->mapped_source and ensure sourcemap values are unique.
+
+    Raises:
+        ValueError: if two different input sources map to the same sourcemap
+            source value.
+    """
+    source_to_mapped_source = {
+        source: sourcemap(source)
+        for source in data_by_source
+    }
+
+    mapped_values = list(source_to_mapped_source.values())
+    if len(set(mapped_values)) != len(mapped_values):
+        reverse_map: dict[str, list[str]] = {}
+        for source, mapped_source in source_to_mapped_source.items():
+            reverse_map.setdefault(mapped_source, []).append(source)
+
+        collisions = {
+            mapped_source: sorted(sources)
+            for mapped_source, sources in reverse_map.items()
+            if len(sources) > 1
+        }
+        raise ValueError(
+            "Sourcemap collision: multiple input sources map to the same output source value. "
+            f"Collisions: {collisions}"
+        )
+
+    return source_to_mapped_source
+
+
 def export_embeddings_table(
     db_path: str | Path,
     output_path: str | Path,
@@ -151,6 +185,8 @@ def export_embeddings_table(
         log.warning("No embeddings found in database - nothing to export.")
         return
 
+    source_to_mapped_source = _build_and_validate_sourcemap_sources(data_by_source, sourcemap)
+
     total_refs = sum(len(entries) for entries in data_by_source.values())
     log.info("Preparing %d embedding reference(s) from database...", total_refs)
 
@@ -190,7 +226,7 @@ def export_embeddings_table(
     try:
         for i, (source, entries) in enumerate(data_by_source.items(), 1):
             entries.sort(key=lambda x: x[0])
-            output_source_value = sourcemap(source)
+            output_source_value = source_to_mapped_source[source]
 
             dest = dest_paths_map[source]
             df = build_rows(output_source_value, entries, table_format, db)
@@ -259,6 +295,8 @@ def run_recognizers_over_db(
         log.warning("No embeddings found in database - nothing to classify.")
         return
 
+    source_to_mapped_source = _build_and_validate_sourcemap_sources(data_by_source, sourcemap)
+
     # cfg is a ClassifierConfigList which uses "classifer_name" to refer to what we call "recognizer_name" for templating purposes. 
     recognizer_names = [cfg.classifier_name for cfg in recognizers.configs]
 
@@ -300,7 +338,7 @@ def run_recognizers_over_db(
     try:
         for i, (source, entries) in enumerate(data_by_source.items(), 1):
             entries.sort(key=lambda x: x[0])
-            output_source_value = sourcemap(source)
+            output_source_value = source_to_mapped_source[source]
             recognizer_output_dest = dest_paths_map[source]
             source_df = build_rows(output_source_value, entries, "columns", db)
 

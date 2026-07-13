@@ -12,6 +12,7 @@ from src.config import (
     parse_list_values,
     validate_single_value,
 )
+from src.sourcemap import SourcemapConfig
 
 
 @pytest.fixture
@@ -59,6 +60,16 @@ class TestHelpers:
         parsed = json.loads(rendered)
         assert parsed["source"].endswith("/in")
         assert parsed["flags"] == ["a", "b"]
+
+    def test_config_to_json_handles_sourcemap_config(self):
+        sourcemap_config = SourcemapConfig.from_inputs(
+            sourcemap="canonical_to_baw_original",
+            sourcemap_values={"domain": "https://api.ecosounds.org"},
+        )
+        rendered = config_to_json({"sourcemap_config": sourcemap_config})
+        parsed = json.loads(rendered)
+        assert parsed["sourcemap_config"]["sourcemap_template"] == "{domain}/audio_recordings/{arid}/original"
+        assert parsed["sourcemap_config"]["sourcemap_values"] == {"domain": "https://api.ecosounds.org"}
 
 
 class TestLoadConfig:
@@ -160,43 +171,44 @@ class TestLoadConfig:
 
         assert config["embed"] is False
 
-    def test_sourcemap_token_vals_json_string_from_cli(self, io_dirs):
+    def test_sourcemap_values_json_string_from_cli(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap_preset="canonical_name_to_original_recording_url",
-            sourcemap_token_vals='{"domain": "https://api.ecosounds.org"}',
+            sourcemap="canonical_to_baw_original",
+            sourcemap_values='{"domain": "https://api.ecosounds.org"}',
             config_file=None,
         )
 
         config = load_config(None, args)
-        assert config["sourcemap_preset"] == "canonical_name_to_original_recording_url"
-        assert config["sourcemap_token_vals"] == {"domain": "https://api.ecosounds.org"}
+        assert config["sourcemap"] == "canonical_to_baw_original"
+        assert config["sourcemap_values"] == {"domain": "https://api.ecosounds.org"}
+        assert isinstance(config["sourcemap_config"], SourcemapConfig)
 
-    def test_sourcemap_token_vals_without_preset_raises(self, io_dirs):
+    def test_sourcemap_values_without_source_raises(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap_token_vals={"domain": "https://api.ecosounds.org"},
+            sourcemap_values={"domain": "https://api.ecosounds.org"},
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="sourcemap_token_vals requires sourcemap_preset"):
+        with pytest.raises(ValueError, match="sourcemap_values requires sourcemap or sourcemap_template"):
             load_config(None, args)
 
-    def test_invalid_sourcemap_preset_raises(self, io_dirs):
+    def test_invalid_sourcemap_raises(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap_preset="not_real",
+            sourcemap="not_real",
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="Invalid sourcemap_preset value"):
+        with pytest.raises(ValueError, match="Invalid sourcemap value"):
             load_config(None, args)

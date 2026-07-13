@@ -164,10 +164,16 @@ def ensure_output_path_within_root(relative_path, output_root):
 def validate_and_resolve_template_config(config):
     """specified or default presets with specified or default templates."""
 
+    def template_path_type_is_valid(key):
+        template_path_type = config.get(key)
+        if template_path_type is None or template_path_type in OUTPUT_PATH_TYPE_TEMPLATES:
+            return True
+        raise ValueError(
+            f"Invalid {key}: {template_path_type}. Valid options are: {sorted(OUTPUT_PATH_TYPE_TEMPLATES)}"
+        )   
 
-    # this will be used as the default where analysis type specific output path types are not provided
-    output_path_type_val = config.get("output_path_type")
 
+    # reuse logic for each analysis type (embeddings, recognizers, base-classifier)
     def process_for_analysis_type(
             analysis_output_path_template, # e.g. embeddings_output_path_template or recognizer_output_path_template
             analysis_output_path_type, # e.g. embeddings_output_path_type or recognizer_output_path_type
@@ -181,18 +187,16 @@ def validate_and_resolve_template_config(config):
                 "Cannot specify both {} and {}".format(analysis_output_path_template, analysis_output_path_type)
             )
         
+        template_path_type_is_valid(analysis_output_path_type)
+        
+        
         # the general "output_path_type" is used as the default if provided, applying to all analysis types
         # this allows the user to set a single output path type for all analysis types
-        if config["output_path_type"] is not None:
-            default_path_type = config["output_path_type"]
-        else:
-            default_path_type = DEFAULT_PATH_TYPE
-
-        if config.get(analysis_output_path_type) is None:
-            config[analysis_output_path_type] = default_path_type
+        default_path_type = config["output_path_type"] or DEFAULT_PATH_TYPE
+        path_type = config[analysis_output_path_type] or default_path_type
 
         if config.get(analysis_output_path_template) is None:
-            config[analysis_output_path_template] = OUTPUT_PATH_TYPE_TEMPLATES[config[analysis_output_path_type]]
+            config[analysis_output_path_template] = OUTPUT_PATH_TYPE_TEMPLATES[path_type]
 
         # validates the template string
         validate_output_path_template(config[analysis_output_path_template], template_type=analysis_type) 

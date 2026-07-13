@@ -3,7 +3,10 @@
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 from src import embed
+from src.sourcemap import SourcemapConfig
 
 
 def _base_config(tmp_path, **overrides):
@@ -26,6 +29,7 @@ def _base_config(tmp_path, **overrides):
         "recognizers": [],
         "recognizer_results_filetype": "csv",
         "recognizer_output_path_template": "{analysis}{ext}",
+        "sourcemap_config": None,
     }
     cfg.update(overrides)
     return cfg
@@ -90,8 +94,9 @@ class TestEmbedPipeline:
     def test_sourcemap_passed_to_export_when_configured(self, tmp_path):
         config = _base_config(
             tmp_path,
-            sourcemap_preset="canonical_name_to_original_recording_url",
-            sourcemap_token_vals={"domain": "https://api.ecosounds.org"},
+            sourcemap_config=SourcemapConfig.from_inputs(
+                sourcemap="canonical_to_ecosounds_original",
+            ),
         )
 
         with mock.patch("src.embed.create_database", return_value=100.0), mock.patch(
@@ -109,8 +114,9 @@ class TestEmbedPipeline:
         config = _base_config(
             tmp_path,
             recognizers=[object()],
-            sourcemap_preset="canonical_name_to_original_recording_url",
-            sourcemap_token_vals={"domain": "https://api.ecosounds.org"},
+            sourcemap_config=SourcemapConfig.from_inputs(
+                sourcemap="canonical_to_ecosounds_original",
+            ),
         )
 
         with mock.patch("src.embed.create_database", return_value=100.0), mock.patch(
@@ -121,3 +127,34 @@ class TestEmbedPipeline:
         _, kwargs = mock_run.call_args
         sourcemap_fn = kwargs["sourcemap"]
         assert callable(sourcemap_fn)
+
+    def test_no_pattern_sourcemap_with_multiple_files_raises(self, tmp_path):
+        config = _base_config(
+            tmp_path,
+            sourcemap_config=SourcemapConfig.from_inputs(
+                sourcemap_template="https://api.ecosounds.org/audio_recordings/1234/original",
+            ),
+        )
+        (config["source"] / "a.wav").write_bytes(b"x")
+        (config["source"] / "b.wav").write_bytes(b"x")
+
+        with pytest.raises(ValueError, match="sourcemap without a pattern"):
+            embed.embed(config)
+
+    def test_no_pattern_sourcemap_with_single_file_is_allowed(self, tmp_path):
+        config = _base_config(
+            tmp_path,
+            sourcemap_config=SourcemapConfig.from_inputs(
+                sourcemap_template="https://api.ecosounds.org/audio_recordings/1234/original",
+            ),
+        )
+        single_file = config["source"] / "single.wav"
+        single_file.write_bytes(b"x")
+        config["source"] = single_file
+
+        with mock.patch("src.embed.create_database", return_value=100.0), mock.patch(
+            "src.embed.export_embeddings_table"
+        ) as mock_export, mock.patch("src.embed.log_ram"):
+            embed.embed(config)
+
+        assert mock_export.called

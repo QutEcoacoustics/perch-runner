@@ -46,14 +46,16 @@ docker run --rm \
 | `--classify_output_path_type` | Preset output layout for classification files: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
 | `--recognizer_results_filetype` | File format for recognizer results: `parquet` or `csv` | `csv` |
-| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{recognizer_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{recognizer_name}/{parents}/{basename}/{analysis}{ext}` |
+| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{classifier_name}/{parents}/{basename}/{analysis}{ext}` |
 | `--recognizer_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
 | `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_basename`, `nested_basename`, `nested`, `flat` | None |
 | `--dataset_name` | Dataset name used in runner configuration | `search_set` |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
-| `--sourcemap_preset` | Optional preset used to rewrite the output `source` value (for embeddings and recognizer outputs) | None |
-| `--sourcemap_token_vals` | Optional JSON object of token values injected into the selected sourcemap preset | None |
+| `--sourcemap` | Optional sourcemap preset used to rewrite the output `source` value | None |
+| `--sourcemap_values` | Optional JSON object of token values used to fill sourcemap template placeholders | None |
+| `--sourcemap_template` | Optional sourcemap destination template, e.g. `https://.../audio_recordings/{arid}/original` | None |
+| `--sourcemap_pattern` | Optional regex (or preset name) used to extract named token values from basename | None |
 | `--save_db` | Persist the hoplite embedding database. Use --save_db with no value to enable (default: false) | `false` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
 | `--workers` | Worker count or `auto` | `auto` |
@@ -197,26 +199,39 @@ Location for the internal embedding database.
 - Relative paths are resolved under `--output`.
 - Default is `db`, which resolves to `<output>/db`.
 
-#### --sourcemap_preset
+#### --sourcemap
 
-Selects a hardcoded sourcemap preset that rewrites the exported `source` column.
+Selects a hardcoded sourcemap preset that can provide a default template and optional pattern.
 
-- If unset, the original source path is written unchanged.
-- Current preset: `canonical_name_to_original_recording_url`
-- This preset extracts `audio_recording_id` from canonical names like `..._909057.flac` and renders:
-  - `{domain}/audio_recordings/{audio_recording_id}/original`
+- If unset (and no other sourcemap options are set), source paths are written unchanged.
+- Current presets: `canonical_name_to_original_recording_url`, `original_recording_url`
 
-Example:
+#### --sourcemap_template
 
-- `analyze --embed --sourcemap_preset canonical_name_to_original_recording_url --sourcemap_token_vals '{"domain":"https://api.ecosounds.org"}'`
+Defines the output template directly. Use `{token}` placeholders for values from `--sourcemap_values` and/or named groups extracted by `--sourcemap_pattern`.
 
-#### --sourcemap_token_vals
+Examples:
 
-JSON object (CLI string or config file object) used to provide values for sourcemap template tokens.
+- Constant mapping for every row:
+  - `analyze --embed --sourcemap_template 'https://api.ecosounds.org/audio_recordings/1234/original'`
+- Pattern + values mapping:
+  - `analyze --embed --sourcemap_template '{domain}/audio_recordings/{arid}/original' --sourcemap_pattern canonical_filename --sourcemap_values '{"domain":"https://api.ecosounds.org"}'`
 
-- Requires `--sourcemap_preset`.
+#### --sourcemap_pattern
+
+Optional pattern used to extract named token values from each basename.
+
+- Can be a raw regex with named groups, e.g. `(?P<arid>\d+)`.
+- Can also be the preset name `canonical_filename`.
+- If a pattern is set and does not match a file basename, that file's source is left unchanged.
+
+#### --sourcemap_values
+
+JSON object (CLI string or config file object) used to provide static template token values.
+
 - Keys must be simple token names (letters, numbers, underscore).
-- For `canonical_name_to_original_recording_url`, supply `domain`.
+- Values are merged with pattern-extracted tokens per file.
+- Pattern-extracted tokens take precedence for the current file.
 
 #### --save_db
 

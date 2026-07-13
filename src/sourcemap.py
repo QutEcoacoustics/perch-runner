@@ -4,12 +4,13 @@ Sourcemaps rewrite the exported `source` value (for embeddings and recognizer
 tables) from the original recording path into a user-defined destination
 string, typically a URL.
 
-The public entrypoint is `build_sourcemap_from_preset(...)`.
+The public entrypoint is `build_sourcemap(...)`.
 """
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # Matches workbench canonical recording filenames, e.g.
 #   20210428T100000Z_Five-Rivers-Dry-A_909057.flac
@@ -23,14 +24,34 @@ _CANONICAL_FILENAME_PATTERN = re.compile(
 )
 
 sourcemap_presets = {
-    "canonical_name_to_original_recording_url": {
+    "canonical_to_baw_original": {
         "pattern": _CANONICAL_FILENAME_PATTERN.pattern,
-        "destination": "{domain}/audio_recordings/{arid}/original",
+        "template": "{domain}/audio_recordings/{arid}/original",
     },
-    "original_recording_url": {
+    "canonical_to_ecosounds_original": {
+        "pattern": _CANONICAL_FILENAME_PATTERN.pattern,
+        "template": "https://api.ecosounds.org/audio_recordings/{arid}/original",
+    },
+    "canonical_to_a2o_original": {
+        "pattern": _CANONICAL_FILENAME_PATTERN.pattern,
+        "template": "https://api.acousticsobservatory.org/audio_recordings/{arid}/original",
+    },
+    "baw_original": {
         "pattern": None,
-        "destination": "{domain}/audio_recordings/{arid}/original",
-    }
+        "template": "{domain}/audio_recordings/{arid}/original",
+    }, 
+    "ecosounds_original": {
+        "pattern": None,
+        "template": "https://api.ecosounds.org/audio_recordings/{arid}/original",
+    },
+    "a2o_original": {
+        "pattern": None,
+        "template": "https://api.acousticsobservatory.org.au/audio_recordings/{arid}/original",
+    },
+}
+
+_PATTERN_PRESETS = {
+    "canonical_filename": _CANONICAL_FILENAME_PATTERN.pattern,
 }
 
 
@@ -58,15 +79,15 @@ def _validate_token_vals(token_vals: dict[str, Any] | None) -> dict[str, str]:
     if token_vals is None:
         return {}
     if not isinstance(token_vals, dict):
-        raise ValueError("sourcemap_token_vals must be a dictionary")
+        raise ValueError("sourcemap_values must be a dictionary")
     normalized: dict[str, str] = {}
     for key, value in token_vals.items():
         if not isinstance(key, str) or not key:
-            raise ValueError("sourcemap_token_vals keys must be non-empty strings")
+            raise ValueError("sourcemap_values keys must be non-empty strings")
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
             raise ValueError(f"Invalid sourcemap token key: {key}")
         if value is None:
-            raise ValueError(f"sourcemap_token_vals[{key}] may not be null")
+            raise ValueError(f"sourcemap_values[{key}] may not be null")
         normalized[key] = str(value)
     return normalized
 
@@ -108,105 +129,144 @@ def get_sourcemap_preset_names() -> list[str]:
     return sorted(sourcemap_presets.keys())
 
 
-def build_sourcemap_from_preset(
-    preset_name: str | None,
-    token_vals: dict[str, Any] | None = None,
-):
-    """Build a callable sourcemap from a named preset and optional token overrides.
+def get_sourcemap_pattern_preset_names() -> list[str]:
+    """Return a sorted list of available sourcemap pattern preset names."""
+    return sorted(_PATTERN_PRESETS.keys())
 
-    Args:
-        preset_name: Name of a preset from ``sourcemap_presets``. If None or
-            empty, returns None (meaning no remapping is applied).
-        token_vals: Optional dict of static token values merged into the preset
-            destination template. Tokens extracted by the preset's regex take
-            precedence for the current filename; static values fill the rest.
 
-    Returns:
-        A callable ``(filename: str) -> str`` that remaps source values, or
-        None if no preset was specified.
+def _resolve_pattern_spec(pattern_spec: str | None) -> str | None:
+    """Resolve a pattern spec into a concrete regex string.
 
-    Raises:
-        ValueError: if the preset name is unknown, a required token is missing,
-            or token_vals contains invalid keys.
+    Accepts a named pattern preset, sourcemap preset name with a pattern,
+    or a raw regex string.
     """
-    if not preset_name:
+    if pattern_spec is None:
         return None
 
-    preset = sourcemap_presets.get(preset_name)
-    if preset is None:
-        raise ValueError(
-            "Unknown sourcemap_preset: "
-            f"{preset_name}. Available presets: {get_sourcemap_preset_names()}"
-        )
+    if pattern_spec in _PATTERN_PRESETS:
+        return _PATTERN_PRESETS[pattern_spec]
 
-    destination = preset.get("destination")
-    if not isinstance(destination, str) or not destination.strip():
+    if pattern_spec in sourcemap_presets:
+        preset_pattern = sourcemap_presets[pattern_spec].get("pattern")
+        if preset_pattern is None:
+            raise ValueError(
+                f"sourcemap_pattern preset '{pattern_spec}' does not define a pattern"
+            )
+        return str(preset_pattern)
+
+    return pattern_spec
+
+
+def _preset_template(preset: dict[str, Any], preset_name: str) -> str:
+    """Fetch and validate a preset template."""
+    template = preset.get("template")
+    if not isinstance(template, str) or not template.strip():
         raise ValueError(f"sourcemap preset '{preset_name}' has an invalid destination template")
+    return template
 
-    pattern = None
-    pattern_str = preset.get("pattern")
-    if pattern_str:
-        if not isinstance(pattern_str, str):
-            raise ValueError(f"sourcemap preset '{preset_name}' has non-string pattern")
-        pattern = compile_source_pattern(pattern_str)
 
-    static_token_vals = _validate_token_vals(token_vals)
-    template_tokens = _extract_template_tokens(destination)
-    pattern_group_names = set(pattern.groupindex.keys()) if pattern is not None else set()
+@dataclass(frozen=True)
+class SourcemapConfig:
+    """Resolved sourcemap configuration used to build per-file mappers."""
 
-    missing_tokens = sorted(template_tokens - (set(static_token_vals.keys()) | pattern_group_names))
-    if missing_tokens:
-        raise ValueError(
-            f"sourcemap preset '{preset_name}' is missing token values for: {missing_tokens}"
+    sourcemap_values: dict[str, str]
+    sourcemap_template: str
+    sourcemap_pattern: str | None = None
+
+    @classmethod
+    def from_inputs(
+        cls,
+        sourcemap: str | None = None,
+        sourcemap_values: dict[str, Any] | None = None,
+        sourcemap_template: str | None = None,
+        sourcemap_pattern: str | None = None,
+    ) -> "SourcemapConfig | None":
+        """Resolve preset/overrides and return a validated SourcemapConfig.
+
+        Returns None when no sourcemap options are configured.
+        """
+        if not sourcemap and sourcemap_template is None and sourcemap_pattern is None and sourcemap_values is None:
+            return None
+
+        resolved_template: str | None = None
+        resolved_pattern_spec: str | None = None
+
+        if sourcemap:
+            preset = sourcemap_presets.get(sourcemap)
+            if preset is None:
+                raise ValueError(
+                    "Unknown sourcemap: "
+                    f"{sourcemap}. Available presets: {get_sourcemap_preset_names()}"
+                )
+            resolved_template = _preset_template(preset, sourcemap)
+            preset_pattern = preset.get("pattern")
+            resolved_pattern_spec = str(preset_pattern) if preset_pattern is not None else None
+
+        if sourcemap_template is not None:
+            if not isinstance(sourcemap_template, str) or not sourcemap_template.strip():
+                raise ValueError("sourcemap_template must be a non-empty string")
+            resolved_template = sourcemap_template
+
+        if sourcemap_pattern is not None:
+            if not isinstance(sourcemap_pattern, str) or not sourcemap_pattern.strip():
+                raise ValueError("sourcemap_pattern must be a non-empty string")
+            resolved_pattern_spec = _resolve_pattern_spec(sourcemap_pattern)
+
+        if resolved_template is None:
+            raise ValueError("sourcemap_template is required unless the selected sourcemap preset provides one")
+
+        pattern = None
+        if resolved_pattern_spec:
+            pattern = compile_source_pattern(resolved_pattern_spec)
+
+        static_token_vals = _validate_token_vals(sourcemap_values)
+        template_tokens = _extract_template_tokens(resolved_template)
+        pattern_group_names = set(pattern.groupindex.keys()) if pattern is not None else set()
+
+        missing_tokens = sorted(template_tokens - (set(static_token_vals.keys()) | pattern_group_names))
+        if missing_tokens:
+            raise ValueError(
+                "sourcemap is missing token values for: "
+                f"{missing_tokens}. Provide them via sourcemap_values and/or named pattern groups."
+            )
+
+        return cls(
+            sourcemap_values=static_token_vals,
+            sourcemap_template=resolved_template,
+            sourcemap_pattern=resolved_pattern_spec,
         )
 
-    def mapper(filename: str) -> str:
-        """Remap one source filename to a destination string.
+    def to_log_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe representation for logging/debug metadata."""
+        return {
+            "sourcemap_template": self.sourcemap_template,
+            "sourcemap_pattern": self.sourcemap_pattern,
+            "sourcemap_values": dict(self.sourcemap_values),
+        }
 
-        The preset pattern is matched against the basename of the path only,
-        so directory components are ignored. If the pattern does not match,
-        the original filename is returned unchanged (passthrough semantics).
-        """
-        resolved_tokens = dict(static_token_vals)
+    def build_mapper(self) -> Callable[[str], str]:
+        """Build a per-file mapping function from this resolved config."""
+        pattern = compile_source_pattern(self.sourcemap_pattern) if self.sourcemap_pattern else None
 
-        if pattern is not None:
-            basename = Path(filename).name
-            match = pattern.search(basename)
-            if match is None:
-                return filename
-            for key, value in match.groupdict().items():
-                if value is not None:
-                    resolved_tokens[key] = value
+        def mapper(filename: str) -> str:
+            resolved_tokens = dict(self.sourcemap_values)
 
-        return _render_destination_template(destination, resolved_tokens)
+            if pattern is not None:
+                basename = Path(filename).name
+                match = pattern.search(basename)
+                if match is None:
+                    return filename
+                for key, value in match.groupdict().items():
+                    if value is not None:
+                        resolved_tokens[key] = value
 
-    return mapper
+            return _render_destination_template(self.sourcemap_template, resolved_tokens)
 
-
-def apply_source_map(filename: str, pattern: re.Pattern, template: str) -> str:
-    """Apply a regex pattern to a filename and fill a template with captured groups.
-
-    Template placeholders are {0} for the full match, {1}, {2}, etc. for
-    captured groups.  Only simple numeric references are supported — no
-    attribute access, format specs, or expressions.
-
-    Returns the original filename unchanged if the pattern does not match.
-    """
-    basename = Path(filename).name
-    match = pattern.search(basename)
-    if match is None:
-        return filename
-
-    result = template
-    # Replace {0} with full match, {1}..{N} with captured groups.
-    for i, value in enumerate([match.group(0)] + list(match.groups())):
-        if value is not None:
-            result = result.replace(f'{{{i}}}', value)
-
-    return result
+        return mapper
 
 
-def create_sourcemap_function(pattern_str: str, template: str):
-    """Create a sourcemap function from a regex pattern and template string."""
-    pattern = compile_source_pattern(pattern_str)
-    return lambda filename: apply_source_map(filename, pattern, template)
+def build_sourcemap(sourcemap_config: SourcemapConfig | None) -> Callable[[str], str] | None:
+    """Build a source-mapping callable from a resolved sourcemap config."""
+    if sourcemap_config is None:
+        return None
+    return sourcemap_config.build_mapper()

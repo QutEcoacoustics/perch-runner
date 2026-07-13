@@ -11,13 +11,37 @@ import shutil
 from pathlib import Path
 
 from src.config import config_to_json
-from src.embed_create_db import _detect_glob_pattern, _scan_audio_files, create_database
+from src.embed_create_db import AUDIO_EXTENSIONS, _detect_glob_pattern, _discover_audio_files, create_database
 from src.db_to_table import run_recognizers_over_db, export_embeddings_table
 from src.resources import log_ram
-from src.sourcemap import build_sourcemap_from_preset
+from src.sourcemap import build_sourcemap
 from src.version import PERCH_HOPLITE_VERSION, __version__
 
 log = logging.getLogger(__name__)
+
+
+def _count_input_audio_files_for_run(config: dict) -> int:
+    """Estimate how many audio files will be processed for this run."""
+    source = Path(config["source"])
+    if source.is_file():
+        return 1
+
+    configured_file_glob = config.get("file_glob")
+    if configured_file_glob:
+        files = sorted(source.glob(configured_file_glob))
+        return sum(1 for f in files if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS)
+
+    discovered_audio_files = _discover_audio_files(source)
+    if not discovered_audio_files:
+        return 0
+
+    file_glob = _detect_glob_pattern(source, discovered_audio_files=discovered_audio_files)
+    target_depth = len([part for part in file_glob.split("/") if part == "*"])
+    return sum(
+        1
+        for f in discovered_audio_files
+        if len(f.relative_to(source).parts) == target_depth
+    )
 
 
 
@@ -60,6 +84,16 @@ def embed(config: dict):
     # Track if DB existed before this run
     db_existed_before = db_path.exists()
 
+    sourcemap_config = config.get("sourcemap_config")
+    if sourcemap_config is not None and sourcemap_config.sourcemap_pattern is None:
+        input_audio_count = _count_input_audio_files_for_run(config)
+        if input_audio_count > 1:
+            raise ValueError(
+                "sourcemap without a pattern cannot be used when processing multiple audio files, "
+                "because it would map all files to the same source value. "
+                "Provide sourcemap_pattern or process a single input file."
+            )
+
     try:
         audio_duration_s = create_database(config)
     except Exception:
@@ -68,10 +102,7 @@ def embed(config: dict):
 
     
     save_db = config.get('save_db', False)
-    sourcemap = build_sourcemap_from_preset(
-        config.get("sourcemap_preset"),
-        config.get("sourcemap_token_vals"),
-    )
+    sourcemap = build_sourcemap(sourcemap_config)
 
     if config['embed']:
         export_embeddings_table(

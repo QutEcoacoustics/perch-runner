@@ -23,6 +23,7 @@ from src.recognizer_utils import (
     validate_recognizers,
 )
 from src.sourcemap import get_sourcemap_preset_names
+from src.sourcemap import SourcemapConfig
 
 default_config_dir = "/mnt/config/"
 
@@ -42,7 +43,7 @@ valid_values = {
     "recognizer_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
     "output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
     "save_db": [True, False],
-    "sourcemap_preset": get_sourcemap_preset_names(),
+    "sourcemap": get_sourcemap_preset_names(),
 }
 
 
@@ -59,8 +60,10 @@ all_config_options = {
     "dataset_name": ("search_set", "dataset name used in runner configuration"),
     "workers": ("auto", "number of worker threads for embedding, or 'auto' (default) to choose based on available RAM."),
     "db_path": ("db", "database output path. Relative paths are resolved under --output (default: db)"),
-    "sourcemap_preset": (None, "optional source remapping preset name for output source values"),
-    "sourcemap_token_vals": (None, "optional JSON object/dict of token values injected into sourcemap presets"),
+    "sourcemap": (None, "optional sourcemap preset name used for source remapping"),
+    "sourcemap_values": (None, "optional JSON object/dict of template token values used for sourcemap rendering"),
+    "sourcemap_template": (None, "optional sourcemap destination template, e.g. https://.../{arid}/original"),
+    "sourcemap_pattern": (None, "optional sourcemap pattern preset name or regex used to extract named tokens from filename"),
 
     "embed": (None, "enable embedding export (boolean flag). Use --embeddings_table_format and --embeddings_table_filetype to control output format."),
     "embeddings_table_format": ("serialized", "table format for embeddings, e.g. serialized, columns"),
@@ -119,6 +122,8 @@ def normalize_bool_string(explicit_config, key):
 
 def _json_safe_value(value):
     """Convert config values into JSON-serializable structures."""
+    if isinstance(value, SourcemapConfig):
+        return value.to_log_dict()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -295,25 +300,40 @@ def validate_classify_config(explicit_config):
 
 def validate_sourcemap_config(explicit_config):
     """Validate and normalize sourcemap-related config values."""
-    validate_single_value(explicit_config, "sourcemap_preset")
+    validate_single_value(explicit_config, "sourcemap")
 
-    if "sourcemap_token_vals" in explicit_config:
-        token_vals = explicit_config["sourcemap_token_vals"]
+    if "sourcemap_values" in explicit_config:
+        token_vals = explicit_config.get("sourcemap_values")
         if isinstance(token_vals, str):
             try:
                 token_vals = json.loads(token_vals)
             except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid sourcemap_token_vals JSON: {e}") from e
+                raise ValueError(f"Invalid sourcemap_values JSON: {e}") from e
 
         if token_vals is None:
-            explicit_config["sourcemap_token_vals"] = None
+            explicit_config["sourcemap_values"] = None
         elif not isinstance(token_vals, dict):
-            raise ValueError("sourcemap_token_vals must be a dictionary or a JSON object string")
+            raise ValueError("sourcemap_values must be a dictionary or a JSON object string")
         else:
-            explicit_config["sourcemap_token_vals"] = token_vals
+            explicit_config["sourcemap_values"] = token_vals
 
-    if explicit_config.get("sourcemap_token_vals") and not explicit_config.get("sourcemap_preset"):
-        raise ValueError("sourcemap_token_vals requires sourcemap_preset")
+    has_template = bool(explicit_config.get("sourcemap_template"))
+    has_pattern = bool(explicit_config.get("sourcemap_pattern"))
+    has_values = bool(explicit_config.get("sourcemap_values"))
+    has_sourcemap = bool(explicit_config.get("sourcemap"))
+
+    if has_values and not (has_sourcemap or has_template):
+        raise ValueError("sourcemap_values requires sourcemap or sourcemap_template")
+
+    if has_pattern and not (has_sourcemap or has_template):
+        raise ValueError("sourcemap_pattern requires sourcemap or sourcemap_template")
+
+    explicit_config["sourcemap_config"] = SourcemapConfig.from_inputs(
+        sourcemap=explicit_config.get("sourcemap"),
+        sourcemap_values=explicit_config.get("sourcemap_values"),
+        sourcemap_template=explicit_config.get("sourcemap_template"),
+        sourcemap_pattern=explicit_config.get("sourcemap_pattern"),
+    )
 
 
 

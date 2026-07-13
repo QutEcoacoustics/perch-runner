@@ -62,6 +62,23 @@ def test_custom_sourcemap_function(workspace):
     assert df["source"].str.startswith("custom::").all()
 
 
+def test_sourcemap_source_collision_raises(workspace):
+    _, output = workspace
+
+    def colliding_map(_source_filename):
+        return "same-source"
+
+    with pytest.raises(ValueError, match="Sourcemap collision"):
+        export_embeddings_table(
+            db_path="tests/files/hoplite_perch_v2",
+            output_path=str(output),
+            table_format="serialized",
+            filetype="parquet",
+            output_template=NESTED_TEMPLATE,
+            sourcemap=colliding_map,
+        )
+
+
 def test_parquet_metadata_written(workspace):
     _, output = workspace
 
