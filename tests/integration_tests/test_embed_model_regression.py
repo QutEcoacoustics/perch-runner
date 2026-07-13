@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 
 from src import embed
-from src.config import EmbeddingsFormat
 
 from .embed_helpers import FIXTURES_DIR
 
@@ -33,7 +32,9 @@ def test_perch8_columns_regression(workspace):
     embed.export_embeddings_table(
         db_path=str(output / "db"),
         output_path=str(output / "embeddings"),
-        embeddings_formats=[EmbeddingsFormat("parquet", "columns")],
+        table_format="columns",
+        filetype="parquet",
+        output_template="{parents}/{basename}/{analysis}{ext}",
     )
 
     parquet_files = list((output / "embeddings").rglob("*.parquet"))

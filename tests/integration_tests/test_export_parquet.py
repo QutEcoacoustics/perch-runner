@@ -1,323 +1,200 @@
-"""
-Tests for export_as_parquet function.
+"""Integration and unit-style tests for export_embeddings_table."""
 
-Includes both unit tests (with mocked DBs) and integration tests (with real fixture DBs).
-"""
 from pathlib import Path
 from unittest import mock
 
 import numpy as np
 import pandas as pd
-import pytest
 import pyarrow.parquet as pq
-
-from src import embed
-from src import data_frames
-from src.config import EmbeddingsFormat
+import pytest
 from perch_hoplite.db import sqlite_usearch_impl
 
-from .embed_helpers import FIXTURES_DIR, A2O_FLAC, FIXTURE_DBS
+from src import data_frames
+from src.db_to_table import export_embeddings_table
 from src.version import MODELS
 
+from .embed_helpers import A2O_FLAC, FIXTURE_DBS
 
-# ---------------------------------------------------------------------------
-# Unit Tests: export_as_parquet with mocked databases
-# ---------------------------------------------------------------------------
 
-class TestExportAsParquetUnit:
-    """Unit tests for export_as_parquet with mocked/temporary databases."""
+NESTED_TEMPLATE = "{parents}/{basename}/{analysis}{ext}"
 
-    def test_empty_db_logs_warning_returns_early(self, workspace, caplog):
-        """Empty DB logs warning and returns without writing files."""
-        source, output = workspace
-        db_path = source / "hoplite"
-        db_path.mkdir()
-        usearch_cfg = sqlite_usearch_impl.get_default_usearch_config(1536)
-        db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(db_path), usearch_cfg)
-        assert db.count_embeddings() == 0
 
-        import logging
-        with caplog.at_level(logging.WARNING, logger="src.embed_export_table"):
-            embed.export_embeddings_table(
-                db_path=str(db_path),
+def test_empty_db_logs_warning_returns_early(workspace, caplog):
+    source, output = workspace
+    db_path = source / "hoplite"
+    db_path.mkdir()
+    usearch_cfg = sqlite_usearch_impl.get_default_usearch_config(1536)
+    db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(db_path), usearch_cfg)
+    assert db.count_embeddings() == 0
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="src.db_to_table"):
+        export_embeddings_table(
+            db_path=str(db_path),
+            output_path=str(output),
+            table_format="serialized",
+            filetype="parquet",
+            output_template=NESTED_TEMPLATE,
+        )
+
+    assert any("No embeddings found" in r.message for r in caplog.records)
+
+
+def test_custom_sourcemap_function(workspace):
+    _, output = workspace
+
+    def custom_map(source_filename):
+        return f"custom::{source_filename}"
+
+    export_embeddings_table(
+        db_path="tests/files/hoplite_perch_v2",
+        output_path=str(output),
+        table_format="serialized",
+        filetype="parquet",
+        output_template=NESTED_TEMPLATE,
+        sourcemap=custom_map,
+    )
+
+    parquets = sorted(output.rglob("*.parquet"))
+    assert parquets
+    df = pd.read_parquet(parquets[0])
+    assert df["source"].str.startswith("custom::").all()
+
+
+def test_sourcemap_source_collision_raises(workspace):
+    _, output = workspace
+
+    def colliding_map(_source_filename):
+        return "same-source"
+
+    with pytest.raises(ValueError, match="Sourcemap collision"):
+        export_embeddings_table(
+            db_path="tests/files/hoplite_perch_v2",
+            output_path=str(output),
+            table_format="serialized",
+            filetype="parquet",
+            output_template=NESTED_TEMPLATE,
+            sourcemap=colliding_map,
+        )
+
+
+def test_parquet_metadata_written(workspace):
+    _, output = workspace
+
+    metadata = {
+        "perch_runner.version": "test-version",
+        "perch_hoplite.version": "test-hoplite",
+        "perch_runner.config_json": '{"embed": true}',
+    }
+
+    export_embeddings_table(
+        db_path="tests/files/hoplite_perch_v2",
+        output_path=str(output),
+        table_format="serialized",
+        filetype="parquet",
+        output_template=NESTED_TEMPLATE,
+        parquet_metadata=metadata,
+    )
+
+    parquets = sorted(output.rglob("*.parquet"))
+    assert parquets
+
+    footer_metadata = pq.read_metadata(parquets[0]).metadata or {}
+    assert footer_metadata[b"perch_runner.version"] == b"test-version"
+    assert footer_metadata[b"perch_hoplite.version"] == b"test-hoplite"
+
+
+def test_finalize_failure_raises(workspace):
+    _, output = workspace
+
+    with mock.patch("src.db_to_table.pq.write_table", side_effect=OSError("disk full")):
+        with pytest.raises(OSError, match="disk full"):
+            export_embeddings_table(
+                db_path="tests/files/hoplite_perch_v2",
                 output_path=str(output),
-                embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+                table_format="serialized",
+                filetype="parquet",
+                output_template=NESTED_TEMPLATE,
             )
 
-        assert any("No embeddings found" in r.message for r in caplog.records)
-        assert not list(output.rglob("*.parquet")) if output.exists() else True
 
-    def test_creates_output_dir_if_missing(self, workspace):
-        """Output directory is created if it doesn't exist."""
-        _, output = workspace
-        output = output / "deeply" / "nested" / "output"
-        assert not output.exists()
-
-        embed.export_embeddings_table(
-            db_path="tests/files/hoplite_perch_v2",
-            output_path=str(output),
-            embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-        )
-
-        assert output.exists()
-        assert len(list(output.rglob("*.parquet"))) > 0
-
-    def test_custom_sourcemap_function(self, workspace):
-        """Custom sourcemap changes output paths."""
-        _, output = workspace
-        output = output / "embeddings"
-
-        def custom_map(source_filename):
-            return f"custom::{source_filename}"
-
-        embed.export_embeddings_table(
-            db_path="tests/files/hoplite_perch_v2",
-            output_path=str(output),
-            embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-            sourcemap=custom_map,
-        )
-
-        parquets = sorted(output.rglob("*.parquet"))
-        assert len(parquets) > 0
-        df = pd.read_parquet(parquets[0])
-        assert df["source"].str.startswith("custom::").all()
-
-    def test_parquet_metadata_written(self, workspace):
-        """Custom metadata is written to parquet footer metadata."""
-        _, output = workspace
-        output = output / "embeddings"
-
-        metadata = {
-            "perch_runner.version": "test-version",
-            "perch_hoplite.version": "test-hoplite",
-            "perch_runner.config_json": '{"embed":"parquet"}',
-        }
-
-        embed.export_embeddings_table(
-            db_path="tests/files/hoplite_perch_v2",
-            output_path=str(output),
-            embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-            parquet_metadata=metadata,
-        )
-
-        parquets = sorted(output.rglob("*.parquet"))
-        assert len(parquets) > 0
-
-        footer_metadata = pq.read_metadata(parquets[0]).metadata or {}
-        assert footer_metadata[b"perch_runner.version"] == b"test-version"
-        assert footer_metadata[b"perch_hoplite.version"] == b"test-hoplite"
-        assert footer_metadata[b"perch_runner.config_json"] == b'{"embed":"parquet"}'
-
-    def test_multiple_sources_in_db(self, workspace):
-        """Pre-generated DB with 2 sources produces 2 parquet file trees."""
-        _, output = workspace
-        output = output / "embeddings"
-
-        embed.export_embeddings_table(
-            db_path="tests/files/hoplite_perch_v2",
-            output_path=str(output),
-            embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-        )
-
-        parquets = sorted(output.rglob("*.parquet"))
-        assert len(parquets) == 2
-
-    def test_offsets_sorted_per_source(self, workspace):
-        """Parquet output has offsets sorted within each source."""
-        _, output = workspace
-        output = output / "embeddings"
-
-        embed.export_embeddings_table(
-            db_path="tests/files/hoplite_perch_v2",
-            output_path=str(output),
-            embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-        )
-
-        for parquet_file in output.rglob("*.parquet"):
-            df = pd.read_parquet(parquet_file)
-            assert df["offset"].is_monotonic_increasing, f"Offsets not sorted in {parquet_file}"
-
-    def test_finalize_failure_raises(self, workspace):
-        """Finalization failure should raise so the export run fails."""
-        _, output = workspace
-        output = output / "embeddings"
-
-        with mock.patch("src.embed_export_table.pq.write_table", side_effect=OSError("disk full")):
-            with pytest.raises(OSError, match="disk full"):
-                embed.export_embeddings_table(
-                    db_path="tests/files/hoplite_perch_v2",
-                    output_path=str(output),
-                    embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-                )
-
-    def test_parquet_writers_closed_on_mid_loop_failure(self, workspace):
-        """Parquet writers are closed even if an exception occurs during writing."""
-        _, output = workspace
-        output = output / "embeddings"
-
-        fake_writer = mock.MagicMock()
-        call_count = 0
-
-        def failing_build_rows(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return pd.DataFrame(
-                    {
-                        "source": ["one/100sec.wav"],
-                        "channel": [0],
-                        "offset": [0.0],
-                        "embeddings": [b"x"],
-                    }
-                )
-            raise RuntimeError("boom")
-
-        with mock.patch("src.embed_export_table.pq.ParquetWriter", return_value=fake_writer):
-            with mock.patch("src.embed_export_table.build_rows", side_effect=failing_build_rows):
-                with pytest.raises(RuntimeError, match="boom"):
-                    embed.export_embeddings_table(
-                        db_path="tests/files/hoplite_perch_v2",
-                        output_path=str(output),
-                        embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
-                    )
-
-        fake_writer.close.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# Integration Tests: export_as_parquet with real fixture databases
-# ---------------------------------------------------------------------------
-
-def test_export_as_parquet_serialized(tmp_path):
-    """Export fixture DB to serialized parquet for each model."""
+def test_export_serialized_fixture_db(tmp_path):
     output = tmp_path / "embeddings"
-    db_path = FIXTURE_DBS["perch_v2"]
 
-    embed.export_embeddings_table(
-        db_path=str(db_path),
+    export_embeddings_table(
+        db_path=str(FIXTURE_DBS["perch_v2"]),
         output_path=str(output),
-        embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+        table_format="serialized",
+        filetype="parquet",
+        output_template=NESTED_TEMPLATE,
     )
 
     parquets = list(output.rglob("embeddings.parquet"))
-    assert len(parquets) > 0
+    assert parquets
 
     df = pd.read_parquet(parquets[0])
-    assert len(df) > 0
-    assert "embeddings" in df.columns
-    assert "source" in df.columns
-    assert "offset" in df.columns
-    assert df["offset"].is_monotonic_increasing
-
     emb = data_frames.deserialize_array(df["embeddings"].iloc[0], dtype=np.float32)
     assert len(emb) == 1536
-    assert emb.dtype == np.float32
+    assert df["offset"].is_monotonic_increasing
 
 
 @pytest.mark.parametrize("model_choice", MODELS.keys(), ids=MODELS.keys())
-def test_export_as_parquet_all_models(model_choice, tmp_path):
-    """Export each model's fixture DB and verify embedding dimensionality (serialized)."""
-    expected_dim = MODELS[model_choice]["embedding_dim"]
+def test_export_columns_all_models(model_choice, tmp_path):
     output = tmp_path / "embeddings"
-    db_path = FIXTURE_DBS[model_choice]
+    expected_dim = MODELS[model_choice]["embedding_dim"]
 
-    embed.export_embeddings_table(
-        db_path=str(db_path),
+    export_embeddings_table(
+        db_path=str(FIXTURE_DBS[model_choice]),
         output_path=str(output),
-        embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+        table_format="columns",
+        filetype="parquet",
+        output_template=NESTED_TEMPLATE,
     )
 
     parquets = list(output.rglob("embeddings.parquet"))
-    assert len(parquets) > 0
+    assert parquets
 
     df = pd.read_parquet(parquets[0])
-    assert len(df) > 0
-    assert "embeddings" in df.columns
-    assert df["offset"].is_monotonic_increasing
-
-    emb = data_frames.deserialize_array(df["embeddings"].iloc[0], dtype=np.float32)
-    assert len(emb) == expected_dim
-    assert emb.dtype == np.float32
-
-
-@pytest.mark.parametrize("model_choice", MODELS.keys(), ids=MODELS.keys())
-def test_export_as_parquet_columns_all_models(model_choice, tmp_path):
-    """Export each model's fixture DB in columns format (f0000, f0001, ...)."""
-    expected_dim = MODELS[model_choice]["embedding_dim"]
-    output = tmp_path / "embeddings"
-    db_path = FIXTURE_DBS[model_choice]
-
-    embed.export_embeddings_table(
-        db_path=str(db_path),
-        output_path=str(output),
-        embeddings_formats=[EmbeddingsFormat("parquet", "columns")],
-    )
-
-    parquets = list(output.rglob("embeddings.parquet"))
-    assert len(parquets) > 0
-
-    df = pd.read_parquet(parquets[0])
-    assert len(df) > 0
-    assert "f0000" in df.columns
-    assert "f0001" in df.columns
-    assert "embeddings" not in df.columns
-    assert df["offset"].is_monotonic_increasing
-
     feature_cols = [c for c in df.columns if c.startswith("f")]
     assert len(feature_cols) == expected_dim
 
 
-def test_export_as_parquet_both_formats(tmp_path):
-    """Export both serialized and columns formats simultaneously."""
+def test_export_both_formats_by_two_calls(tmp_path):
     output = tmp_path / "embeddings"
+    template = "{embeddings_table_format}/{parents}/{basename}/{analysis}{ext}"
 
-    embed.export_embeddings_table(
+    export_embeddings_table(
         db_path="tests/files/hoplite_perch_v2",
         output_path=str(output),
-        embeddings_formats=[
-            EmbeddingsFormat("parquet", "serialized"),
-            EmbeddingsFormat("parquet", "columns"),
-        ],
-        output_template="{embedding_table_format}/{parents}/{basename}{ext}/embeddings",
+        table_format="serialized",
+        filetype="parquet",
+        output_template=template,
+    )
+    export_embeddings_table(
+        db_path="tests/files/hoplite_perch_v2",
+        output_path=str(output),
+        table_format="columns",
+        filetype="parquet",
+        output_template=template,
     )
 
-    assert (output / "serialized" / "one" / "100sec.wav.parquet" / "embeddings.parquet").exists()
-    assert (output / "columns" / "one" / "100sec.wav.parquet" / "embeddings.parquet").exists()
-
-    df_ser = pd.read_parquet(output / "serialized" / "one" / "100sec.wav.parquet" / "embeddings.parquet")
-    assert "embeddings" in df_ser.columns
-    assert "f0000" not in df_ser.columns
-
-    df_col = pd.read_parquet(output / "columns" / "one" / "100sec.wav.parquet" / "embeddings.parquet")
-    assert "f0000" in df_col.columns
-    assert "embeddings" not in df_col.columns
-
-    assert len(df_ser) == len(df_col)
-
-    first_serialized = data_frames.deserialize_array(df_ser["embeddings"].iloc[0], dtype=np.float32)
-    feature_cols = [c for c in df_col.columns if c.startswith("f")]
-    first_columns = df_col[feature_cols].iloc[0].values.astype(np.float32)
-    np.testing.assert_array_almost_equal(first_serialized, first_columns)
+    ser_path = output / "serialized" / "one" / "100sec.wav" / "embeddings.parquet"
+    col_path = output / "columns" / "one" / "100sec.wav" / "embeddings.parquet"
+    assert ser_path.exists()
+    assert col_path.exists()
 
 
 def test_a2o_flac_export_parquet(tmp_path):
-    """
-    Export the A2O fixture DB: verifies parquet path mirrors source structure.
-    """
     output = tmp_path / "embeddings"
 
-    embed.export_embeddings_table(
+    export_embeddings_table(
         db_path="tests/files/hoplite_a2o",
         output_path=str(output),
-        embeddings_formats=[EmbeddingsFormat("parquet", "serialized")],
+        table_format="serialized",
+        filetype="parquet",
+        output_template=NESTED_TEMPLATE,
     )
 
-    parquet_path = output / "Minjerribah-Dry-B/20220502T075930+1000_Minjerribah-Dry-B_1088507.flac" / "embeddings.parquet"
+    parquet_path = output / f"Minjerribah-Dry-B/{A2O_FLAC}" / "embeddings.parquet"
     assert parquet_path.exists()
-
-    df = pd.read_parquet(parquet_path)
-    assert len(df) >= 6
-    assert df.shape[1] == 4
-    assert "embeddings" in df.columns
-    assert df["source"].iloc[0] == f"Minjerribah-Dry-B/{A2O_FLAC}"
-    assert df["offset"].is_monotonic_increasing

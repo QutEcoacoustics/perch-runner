@@ -10,7 +10,6 @@ import pandas as pd
 
 from src import embed
 from src import data_frames
-from src.config import EmbeddingsFormat
 
 from .embed_helpers import FIXTURES_DIR
 
@@ -28,7 +27,10 @@ def test_embed_config_full_pipeline_to_parquet(workspace):
         "db_path": str(output / "db"),
         "model_choice": "perch_v2",
         "dataset_name": "search_set",
-        "embed": [EmbeddingsFormat("parquet", "serialized")],
+        "embed": True,
+        "embeddings_table_format": "serialized",
+        "embeddings_table_filetype": "parquet",
+        "embeddings_output_path_template": "{parents}/{basename}/{analysis}{ext}",
     }
     embed.embed(config)
 

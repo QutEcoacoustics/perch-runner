@@ -12,7 +12,7 @@ import os
 # Limit TF C++ logging before TF is imported (overridden by setup_logging later)
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '1')
 
-from src.config import default_config, load_config
+from src.config import all_config_options, default_config, load_config
 from src.logging_config import setup_logging
 from src.version import __version__, MODELS, PERCH_HOPLITE_VERSION
 
@@ -34,13 +34,15 @@ def handle_analyze(args):
 
         log.info("Starting perch-runner version %s", __version__)
 
-        if config['embed'] or config['save_db']:
+        # there are two analyze branches: embedding (and then maybe doing something with the embeddings), or classify, which does not produce embeddings. 
+        if config['embed'] or config['save_db'] or config.get('recognizers'):
             log.info("Embed requested using model: %s", config['model_choice'])
             embed(config)
 
         if config['classify']:
-            log.info("Classify requested using model: %s", config['model_choice'])
-            log.warning("classify is not implemented yet")
+            # TODO: implement classify branch (no embedding)
+            pass
+
     except MemoryError:
         logging.getLogger(__name__).error(
             "OUT OF MEMORY: Not enough RAM to complete embedding. "
@@ -72,40 +74,33 @@ def get_parser():
     parser = argparse.ArgumentParser(description="Perch Runner: audio embedding and classification")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+
     analyze_parser = subparsers.add_parser(
         "analyze",
         help="run embedding/classification analysis",
     )
-    analyze_parser.add_argument("--embed", nargs='?', const=True, default=None,
-                                help="embedding output format(s), e.g. parquet, csv, parquet-columns. Use --embed with no value for default (parquet).")
-    analyze_parser.add_argument("--classify", nargs='?', const=True, default=None,
-                                help="classification output format(s), e.g. parquet, csv. Use --classify with no value for default (csv).")
-    analyze_parser.add_argument("--source", default=None, help="path to the source audio folder")
-    analyze_parser.add_argument("--output", default=None, help="path to the output folder")
-    analyze_parser.add_argument("--config_file", default=None, help="path to the config file")
-    analyze_parser.add_argument("--model_choice", default=None, help="model to use, e.g. perch_v2")
-    analyze_parser.add_argument("--embedding_table_format", default=None, help="table format for embeddings, e.g. serialized, columns")
+
     analyze_parser.add_argument(
-        "--embeddings_output_path_template",
-        default=None,
-        help=(
-            "custom output path template for embeddings files. "
-            "Supported tokens: {parents}, {basename}, {ext}, {embedding_table_format}, {analysis}."
-        ),
+        "--config_file", 
+        default=None, 
+        help="path to the config file"
     )
-    analyze_parser.add_argument(
-        "--embeddings_output_path_type",
-        default=None,
-        help="preset output path type: flat_basename, nested_basename, nested, flat",
-    )
-    analyze_parser.add_argument("--db_path", default=None, help="database output path. Relative paths are resolved under --output (default: db)")
-    analyze_parser.add_argument("--save_db", nargs='?', const=True, default=None, help="save the hoplite database after processing. Use --save_db with no value to enable (default: false)")
-    analyze_parser.add_argument("--file_glob", default=None, help="glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified.")
-    analyze_parser.add_argument("--workers", default=None, help="number of worker threads for embedding, or 'auto' (default) to choose based on available RAM.")
-    analyze_parser.add_argument("--log_level", default=None, help="log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)")
-    analyze_parser.add_argument("--hoplite_log_level", default=None, help="log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
-    analyze_parser.add_argument("--tf_log_level", default=None, help="log level for TensorFlow C++ output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)")
-    analyze_parser.add_argument("--log_file", default=None, help="path to a log file. Output is sent to both console and file.")
+    # 2. Dynamically generate arguments from your single source of truth
+    # Don't apply defaults here. Config merging relies on non-specified items being absent. 
+    for key, (_default_val, help_text) in all_config_options.items():
+        kwargs = {
+            "help": help_text,
+            "default": argparse.SUPPRESS
+        }
+        
+        # embed/classify/save_db support optional bool-like values.
+        # Examples: --embed (True), --embed false (False), omitted (no override).
+        if key in ["embed", "classify", "save_db"]:
+            kwargs["nargs"] = '?'
+            kwargs["const"] = True
+            
+        analyze_parser.add_argument(f"--{key}", **kwargs)
+
     analyze_parser.set_defaults(func=handle_analyze)
 
     version_parser = subparsers.add_parser("version", help="print version and exit")
@@ -121,7 +116,6 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
     args.func(args)
-
 
 if __name__ == "__main__":
     main()

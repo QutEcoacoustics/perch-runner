@@ -8,16 +8,26 @@ VERSION=""
 
 # Parse arguments
 for arg in "$@"; do
-  if [ "$arg" == "--push" ]; then
-    PUSH=true
-    PLATFORMS="linux/amd64,linux/arm64"
-    ACTION="--push"
-  elif [ "$arg" == "--no-cache" ]; then
-    NO_CACHE="--no-cache"
-  elif [ -z "$VERSION" ]; then
-    # First non-flag argument is the version
-    VERSION="$arg"
-  fi
+  case "$arg" in
+    --push)
+      PUSH=true
+      PLATFORMS="linux/amd64,linux/arm64"
+      ACTION="--push"
+      ;;
+    --no-cache)
+      NO_CACHE="--no-cache"
+      ;;
+    *)
+      if [ -z "$VERSION" ]; then
+        # First non-flag argument is the version
+        VERSION="$arg"
+      else
+        echo "Unknown argument: $arg"
+        echo "Usage: $0 [--push] [--no-cache] [version]"
+        exit 1
+      fi
+      ;;
+  esac
 done
 
 if [ -z "$VERSION" ]; then
