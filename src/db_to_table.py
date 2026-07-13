@@ -161,14 +161,13 @@ def export_embeddings_table(
     Args:
         db_path: Path to the hoplite database directory.
         output_path: Directory to write files to.
+        table_format: Either "serialized" or "columns", determines how embeddings are stored in the output table.
+        filetype: Either "parquet" or "csv", determines the output file format.
+        output_template: Relative path template that determines the
+            destination. 
         sourcemap: Optional function mapping a source filename to an output
             source value written into the rows. If None, the recording
             filename is used unchanged.
-        output_template: Optional relative path template that determines the
-            destination. If None, the default embeddings template is used.
-        embeddings_formats: List of EmbeddingsFormat objects specifying which
-            combinations of filetype (csv/parquet) and table_format (serialized/columns)
-            to export.
         parquet_metadata: Optional metadata key/value pairs to write into
             parquet file footer metadata.
     """

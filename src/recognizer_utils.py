@@ -124,7 +124,7 @@ def validate_recognizers(recognizers, config_dir=None):
     elif isinstance(recognizers, dict):
         recognizers = [recognizers]
     elif not isinstance(recognizers, list):
-        raise ValueError("recognizers must be a list of JSON objects")
+        raise ValueError("recognizers must be a dict, a list of dicts/paths, or a path to a JSON file (or None)")
 
     # recognizers is now a list. Each item of a list is either
     # - a dict (JSON object)
@@ -144,6 +144,10 @@ def validate_recognizers(recognizers, config_dir=None):
             
         elif isinstance(item, dict):
             parsed_recognizers.append(item)
+        else:
+            raise ValueError(
+                f"recognizers[{i}] must be a JSON object (dict) or a string path to a JSON file, got {type(item).__name__}"
+            )
 
 
     for i, recognizer in enumerate(parsed_recognizers):

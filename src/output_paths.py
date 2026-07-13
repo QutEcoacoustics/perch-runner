@@ -18,7 +18,7 @@ DEFAULT_PATH_TYPE = "flat"
 
 ALLOWED_OUTPUT_TEMPLATE_TOKENS = {
     "embeddings": frozenset({"parents", "basename", "ext", "embeddings_table_format", "analysis"}),
-    "recognizers": frozenset({"classifier_name", "parents", "basename", "ext", "analysis"}),
+    "recognizer": frozenset({"classifier_name", "parents", "basename", "ext", "analysis"}),
 }
 
 # preset templates for output paths
@@ -36,31 +36,43 @@ _TEMPLATE_TOKEN_PATTERN = re.compile(r"\{([^{}]+)\}")
 
 
 def validate_output_path_template(template, template_type):
-    """Validate output path template token usage and basic path safety."""
+    """Validate output path template token usage and basic path safety.
+    Args:
+        template: The output path template string to validate.
+        template_type: Either "embeddings" or "recognizer", determines which
+    """
+    template_config_key = f"{template_type}_output_path_template"
+
+    if template_type not in ALLOWED_OUTPUT_TEMPLATE_TOKENS:
+        raise ValueError(
+            f"Invalid template_type: {template_type}. "
+            f"Valid options are: {sorted(ALLOWED_OUTPUT_TEMPLATE_TOKENS.keys())}"
+        )
+
     if not isinstance(template, str):
-        raise ValueError("embeddings_output_path_template must be a string")
+        raise ValueError(f"{template_config_key} must be a string")
     
     allowed_tokens = ALLOWED_OUTPUT_TEMPLATE_TOKENS[template_type]
 
     candidate = template.strip()
     if not candidate:
-        raise ValueError("embeddings_output_path_template cannot be empty")
+        raise ValueError(f"{template_config_key} cannot be empty")
 
     tokens = _TEMPLATE_TOKEN_PATTERN.findall(candidate)
     invalid_tokens = [t for t in tokens if t not in allowed_tokens]
     if invalid_tokens:
         raise ValueError(
-            "Invalid token(s) in embeddings_output_path_template: "
+            f"Invalid token(s) in {template_config_key}: "
             f"{invalid_tokens}. Allowed tokens are: {sorted(allowed_tokens)}"
         )
 
     normalized = candidate.replace("\\", "/")
     if normalized.startswith("/"):
-        raise ValueError("embeddings_output_path_template must be relative (absolute paths are not allowed)")
+        raise ValueError(f"{template_config_key} must be relative (absolute paths are not allowed)")
 
     for part in Path(normalized).parts:
         if part == "..":
-            raise ValueError("embeddings_output_path_template may not contain '..' path components")
+            raise ValueError(f"{template_config_key} may not contain '..' path components")
 
     return candidate
 
@@ -90,7 +102,7 @@ def render_output_relative_path(
     
     # bit of a hack to determine which template type we are rendering for, since the caller doesn't pass that in.
     # if we pass in recognizer_name it implies we should use the recognizers template type
-    template_type = "recognizers" if recognizer_name is not None else "embeddings"
+    template_type = "recognizer" if recognizer_name is not None else "embeddings"
 
     template = validate_output_path_template(template, template_type=template_type)
 
@@ -204,6 +216,6 @@ def validate_and_resolve_template_config(config):
 
     # for each analysis type that uses templated output paths, resolve defaults and validate
     process_for_analysis_type("embeddings_output_path_template", "embeddings_output_path_type", "embeddings")
-    process_for_analysis_type("recognizer_output_path_template", "recognizer_output_path_type", "recognizers")
+    process_for_analysis_type("recognizer_output_path_template", "recognizer_output_path_type", "recognizer")
  
 
