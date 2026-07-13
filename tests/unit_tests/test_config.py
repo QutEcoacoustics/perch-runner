@@ -132,18 +132,21 @@ class TestLoadConfig:
         assert config["recognizers"]
         assert config["model_choice"] == "perch_8"
 
-    def test_conflicting_classify_false_and_classify_filetype_raises(self, io_dirs):
+    def test_classify_false_with_classify_related_keys_warns_and_disables_classify(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             classify=False,
             classify_filetype="csv",
+            save_db=True,
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="Cannot specify --classify false"):
-            load_config(None, args)
+        with pytest.warns(UserWarning, match="classify is explicitly disabled"):
+            config = load_config(None, args)
+
+        assert config["classify"] is False
 
     def test_requires_at_least_one_action(self, io_dirs):
         source, output = io_dirs
@@ -166,10 +169,46 @@ class TestLoadConfig:
             },
         )
 
-        with pytest.warns(UserWarning, match="embed is explicitly set to false"):
+        with pytest.warns(UserWarning, match="embed is explicitly disabled"):
             config = load_config(str(config_file), None)
 
         assert config["embed"] is False
+
+    def test_embed_false_ignores_invalid_embeddings_template(self, io_dirs, tmp_path):
+        source, output = io_dirs
+        config_file = tmp_path / "config.yml"
+        _write_config(
+            config_file,
+            {
+                "source": str(source),
+                "output": str(output),
+                "embed": False,
+                "embeddings_output_path_template": "{not_a_real_token}",
+                "save_db": True,
+            },
+        )
+
+        with pytest.warns(UserWarning, match="embed is explicitly disabled"):
+            config = load_config(str(config_file), None)
+
+        assert config["embed"] is False
+
+    def test_recognizer_settings_without_recognizers_are_ignored(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            save_db=True,
+            recognizer_output_path_template="{bad_token}",
+            recognizer_output_path_type="flat",
+            recognizer_results_filetype="csv",
+            config_file=None,
+        )
+
+        with pytest.warns(UserWarning, match="recognizers is explicitly disabled"):
+            config = load_config(None, args)
+
+        assert not config["recognizers"]
 
     def test_sourcemap_values_json_string_from_cli(self, io_dirs):
         source, output = io_dirs

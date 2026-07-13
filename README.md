@@ -38,18 +38,18 @@ docker run --rm \
 | `--embed` | Enable embedding export (boolean flag). Use `--embed` with no value to enable | `false` |
 | `--embeddings_table_format` | Table layout: `serialized` or `columns` | `serialized` |
 | `--embeddings_table_filetype` | File format for the embedding table: `parquet` or `csv` | `parquet` |
-| `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{basename}`, `{ext}`, `{embeddings_table_format}`, `{analysis}` | `{parents}/{basename}/{analysis}{ext}` |
-| `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{basename}`, `{ext}`, `{embeddings_table_format}`, `{analysis}` | `{analysis}{ext}` |
+| `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
 | `--classify` | Enable Perch global classification output (boolean flag). Use `--classify` with no value to enable | `false` |
 | `--classify_filetype` | File format for classification output: `parquet` or `csv` | `csv` |
 | `--classify_output_path_template` | Output path template for classification files | None |
-| `--classify_output_path_type` | Preset output layout for classification files: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--classify_output_path_type` | Preset output layout for classification files: `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
 | `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
 | `--recognizer_results_filetype` | File format for recognizer results: `parquet` or `csv` | `csv` |
-| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{classifier_name}/{parents}/{basename}/{analysis}{ext}` |
-| `--recognizer_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{analysis}{ext}` |
+| `--recognizer_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
 | `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
-| `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_basename`, `nested_basename`, `nested`, `flat` | None |
+| `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
 | `--dataset_name` | Dataset name used in runner configuration | `search_set` |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
 | `--sourcemap` | Optional sourcemap preset used to rewrite the output `source` value | None |
@@ -120,7 +120,7 @@ using a template.
 
 - Supported tokens: 
   - `{parents}` the parent directories of the audio file, relative to the source directory
-  - `{basename}` the basename of the audio file, without the extension
+  - `{basename}` the filename of the source audio file (including extension)
   - `{ext}` the extension of the output format, e.g. `.parquet`, `.csv`
   - `{embeddings_table_format}` the table format e.g. `serialized` or `columns`
   - `{analysis}` the output type — for embeddings this is always `embeddings`
@@ -129,7 +129,7 @@ using a template.
 
 Examples:
 
-- `{parents}/{basename}/{analysis}{ext}` (default — renders to e.g. `site1/recording.wav/embeddings.parquet`)
+- `{analysis}{ext}` (default — all recordings are merged into a single file, e.g. `embeddings.parquet`)
 - `{parents}/{basename}/{embeddings_table_format}/embeddings{ext}`
 
 If exporting both parquet table formats, include `{embeddings_table_format}` in the template to avoid path collisions.
@@ -142,7 +142,7 @@ Preset output paths (mutually exclusive with `--embeddings_output_path_template`
 
 - `flat_basename` -> `{basename}{ext}`
 - `nested_basename` -> `{parents}/{basename}{ext}`
-- `nested` -> `{parents}/{basename}{ext}`
+- `nested` -> `{parents}/{analysis}{ext}`
 - `flat` -> `{analysis}{ext}` (all recordings in a single file, e.g. `embeddings.parquet`)
 
 #### --recognizers
@@ -150,7 +150,7 @@ Preset output paths (mutually exclusive with `--embeddings_output_path_template`
 Runs embeddings through one or more linear classifiers (embeddings-classifier) and writes per-classifier result files.
 
 - Accepts a path to a JSON file containing a `recognizers` list, or a bare list directly.
-- Each recognizer produces its own output file per source recording by default.
+- By default, recognizer outputs are merged into a single file (`{analysis}{ext}`), unless you include `{classifier_name}` and/or source tokens in a custom template.
 - Output path controlled by `--recognizer_output_path_template` or `--recognizer_output_path_type`.
 - When recognizers are configured, `model_choice` is derived automatically from the recognizer metadata unless explicitly set.
 
@@ -159,19 +159,19 @@ Runs embeddings through one or more linear classifiers (embeddings-classifier) a
 Output path template for recognizer result files. Controls where results are written within `<output>/`.
 
 - Supported tokens:
-  - `{recognizer_name}` the recognizer's name
+  - `{classifier_name}` the recognizer's name
   - `{parents}` parent directories of the source audio file
   - `{basename}` basename of the source audio file, without extension
   - `{ext}` output file extension, e.g. `.csv`, `.parquet`
   - `{analysis}` the output type — for recognizer results this is always `recognizer_results`
 - Must be a relative path.
 - Must not contain `..` path traversal.
-- Default: `{recognizer_name}/{parents}/{basename}/{analysis}{ext}`
+- Default: `{analysis}{ext}`
 
 Examples:
 
-- `{recognizer_name}/{parents}/{basename}/{analysis}{ext}` (default — one directory per recognizer, mirroring source structure)
-- `{recognizer_name}/{analysis}{ext}` (one flat file per recognizer, all recordings merged)
+- `{classifier_name}/{parents}/{basename}/{analysis}{ext}` (one directory per recognizer, mirroring source structure)
+- `{classifier_name}/{analysis}{ext}` (one flat file per recognizer, all recordings merged)
 - `{analysis}{ext}` (single file, all recognizers and recordings merged — use with care)
 
 #### --recognizer_output_path_type
@@ -180,17 +180,18 @@ Preset output paths for recognizer results (mutually exclusive with `--recognize
 
 - `flat_basename` -> `{basename}{ext}`
 - `nested_basename` -> `{parents}/{basename}{ext}`
-- `nested` -> `{parents}/{basename}{ext}`
+- `nested` -> `{parents}/{analysis}{ext}`
 - `flat` -> `{analysis}{ext}` (all recordings for all recognizers in a single file)
 
-Note: these presets do not include `{recognizer_name}`, so results from multiple recognizers will be merged into the same file. Add a `--recognizer_output_path_template` with `{recognizer_name}` if you need per-recognizer separation.
+Note: these presets do not include `{classifier_name}`, so results from multiple recognizers will be merged into the same file. Add a `--recognizer_output_path_template` with `{classifier_name}` if you need per-recognizer separation.
 
 #### --output_path_type
 
-Applies a preset layout to both embeddings and recognizer results at once. The more specific `embeddings_output_path_type` and `classify_output_path_type` take priority if also set.
+Applies a preset layout to both embeddings and recognizer results at once. The more specific `embeddings_output_path_type` and `recognizer_output_path_type` take priority if also set.
 
 - Accepted values: `flat_basename`, `nested_basename`, `nested`, `flat`
 - Equivalent to setting both `--embeddings_output_path_type` and `--recognizer_output_path_type` to the same value.
+- If unset, it resolves to `flat`.
 
 #### --db_path
 
@@ -204,7 +205,7 @@ Location for the internal embedding database.
 Selects a hardcoded sourcemap preset that can provide a default template and optional pattern.
 
 - If unset (and no other sourcemap options are set), source paths are written unchanged.
-- Current presets: `canonical_name_to_original_recording_url`, `original_recording_url`
+- Current presets: `a2o_original`, `baw_original`, `canonical_to_a2o_original`, `canonical_to_baw_original`, `canonical_to_ecosounds_original`, `ecosounds_original`
 
 #### --sourcemap_template
 
@@ -306,17 +307,15 @@ Logging controls.
 
 ### Output Structure
 
-Audio files are discovered relative to the source directory. Output mirrors that structure:
+With defaults (`output_path_type=flat`), output is merged by analysis into a single file per analysis type:
 
 ```
 /mnt/output/
-  site1/
-    recording.wav/
-      embeddings.parquet
-  site2/
-    another.flac/
-      embeddings.parquet
+  embeddings.parquet
+  recognizer_results.csv
 ```
+
+If you set `nested` or `nested_basename`, output can mirror source subdirectories.
 
 Each Parquet file contains one row per 5-second window with columns: `source`, `channel`, `offset`, `embeddings` (serialized numpy array).
 
@@ -329,7 +328,7 @@ Instead of CLI flags, you can mount a YAML config file:
 ```yaml
 source: /mnt/input
 output: /mnt/output
-embed: parquet
+embed: true
 model_choice: perch_v2
 embeddings_table_format: serialized
 file_glob: "*/*"

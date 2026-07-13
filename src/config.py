@@ -99,6 +99,29 @@ _FALSY_STRINGS = frozenset({"none", "false", "null", ""})
 _TRUTHY_STRINGS = frozenset({"true"})
 
 
+def _warn_and_drop_disabled_keys(explicit_config, *, mode_name, related_keys):
+    """
+    If there are embedding related keys present in the config, but the embed flag is explicitly set to False
+    then we remove those keys. This is to prevent validating them even when they are not used. 
+    For example, if --embeddings_table_format is specified in the config.yml, but then --embed is set to False
+    by the commandline, we should not validate the embeddings_table_format. 
+    This also applies to recognizers and classify.
+    
+    """
+    present_keys = [key for key in related_keys if key in explicit_config and explicit_config.get(key) is not None]
+    if not present_keys:
+        return
+
+    warnings.warn(
+        f"{mode_name} is explicitly disabled; related settings will be ignored: "
+        + ", ".join(present_keys),
+        UserWarning,
+    )
+
+    for key in present_keys:
+        explicit_config.pop(key, None)
+
+
 def normalize_bool_string(explicit_config, key):
     """Normalize a value that may be a bool, None, or a bool-like string.
        updates the dict in place. Does not modify the dict if the key is not present
@@ -213,9 +236,8 @@ def validate_single_value(config, key):
 def validate_embedding_config(explicit_config):
     """ validate all the embedding-related config values, including embed, embeddings_table_format, embeddings_table_filetype, embeddings_output_path_template, and embeddings_output_path_type. """
 
-    # Normalize embed/classify/save_db: bool-like strings → True/False, True → default format
+    # Normalize embed/classify/save_db: bool-like strings -> True/False.
     normalize_bool_string(explicit_config, 'embed')
-    embed_explicitly_set = "embed" in explicit_config
 
     # if these keys are specified it imples that embed should be true. e.g. setting the embeddings_table_format is enough
     embed_related_keys = [
@@ -227,10 +249,11 @@ def validate_embedding_config(explicit_config):
 
     if any(explicit_config.get(key, False) for key in embed_related_keys):
         if explicit_config.get('embed') == False:
-            # embed is explicitly disabled, so keep it disabled and warn that embed-related keys are ignored
-            warnings.warn("embed is explicitly set to false; embed-related settings will be ignored: "
-                + ", ".join(embed_related_keys),
-                UserWarning)
+            _warn_and_drop_disabled_keys(
+                explicit_config,
+                mode_name="embed",
+                related_keys=embed_related_keys,
+            )
         else:
             explicit_config['embed'] = True
 
@@ -260,7 +283,11 @@ def validate_recognizer_config(explicit_config, config_file):
     ]
     if any(explicit_config.get(key) for key in recognizer_related_keys):
         if not explicit_config.get("recognizers"):
-            raise ValueError("Cannot specify recognizer output path or results filetype without specifying recognizers.")
+            _warn_and_drop_disabled_keys(
+                explicit_config,
+                mode_name="recognizers",
+                related_keys=recognizer_related_keys,
+            )
 
     # validate that provided model choice and recognizers are compatible, and resolve the effective model choice to use
     validate_single_value(explicit_config, "model_choice")
@@ -289,9 +316,13 @@ def validate_classify_config(explicit_config):
 
     if any(explicit_config.get(key, False) for key in classify_related_keys):
         if explicit_config.get('classify') == False:
-            # if embed is explicitly set to False, but any of the related keys are set, that's a conflict
-            raise ValueError("Cannot specify --classify false and also specify any of the following: {}".format(", ".join(classify_related_keys)))
-        explicit_config['classify'] = True
+            _warn_and_drop_disabled_keys(
+                explicit_config,
+                mode_name="classify",
+                related_keys=classify_related_keys,
+            )
+        else:
+            explicit_config['classify'] = True
 
     validate_single_value(explicit_config, "classify")
 
