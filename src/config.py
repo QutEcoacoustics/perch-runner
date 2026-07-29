@@ -79,6 +79,8 @@ all_config_options = {
     "classify": (False, "enable classify output (boolean flag). Use --classify_filetype to control output format."),
     "classify_filetype": ("csv", "file format for classification tables"),
     "classify_species_list": (None, "path to the species list for classification"),
+    "perch_species_list": (None, "species filter for perch classify detections. Accepts comma/newline separated values, a text-file path, or a list."),
+    "perch_max_detections_per_window": (10, "maximum number of classify detections to keep per window"),
     "classify_output_path_template": (None, "custom output path template for classification files"),
     "classify_output_path_type": (None, "preset output path type for classification files"),
 
@@ -185,19 +187,74 @@ def find_config():
 
 def parse_list_values(values):
 
-    # if it's a string
     if isinstance(values, str):
-        values = [fmt.strip() for fmt in values.split(",")]
-
-    if not isinstance(values, (list, tuple, set)):
+        raw_items = re.split(r"[\n,]", values)
+    elif isinstance(values, (list, tuple, set)):
+        raw_items = []
+        for item in values:
+            if not isinstance(item, str):
+                raise ValueError(f"Invalid list value item type: {type(item)}. Items must be strings.")
+            raw_items.extend(re.split(r"[\n,]", item))
+    else:
         raise ValueError(f"Invalid type: {type(values)}. Must be a string or a list.")
 
-
+    values = [fmt.strip() for fmt in raw_items if fmt.strip()]
     values = [fmt.lower() for fmt in values]
 
     # deduplicate via set, then sort for deterministic ordering
     values = sorted(set([fmt.strip().lower() for fmt in list(values)]))
     return values
+
+
+def parse_species_list_values(values):
+    """Parse species values from comma/newline string or list, preserving case and order."""
+    if isinstance(values, str):
+        raw_items = re.split(r"[\n,]", values)
+    elif isinstance(values, (list, tuple, set)):
+        raw_items = []
+        for item in values:
+            if not isinstance(item, str):
+                raise ValueError(f"Invalid list value item type: {type(item)}. Items must be strings.")
+            raw_items.extend(re.split(r"[\n,]", item))
+    else:
+        raise ValueError(f"Invalid type: {type(values)}. Must be a string or a list.")
+
+    parsed = []
+    seen = set()
+    for item in raw_items:
+        cleaned = item.strip()
+        if not cleaned:
+            continue
+        if cleaned not in seen:
+            seen.add(cleaned)
+            parsed.append(cleaned)
+    return parsed
+
+
+def normalize_perch_species_list(value, *, config_file_dir: Path | None = None):
+    """Normalize perch species list value from inline text, list, or text file."""
+    if value is None:
+        return None
+
+    if isinstance(value, (list, tuple, set)):
+        return parse_species_list_values(value)
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.lower() in _FALSY_STRINGS:
+            return None
+
+        candidate_path = Path(stripped)
+        if not candidate_path.is_absolute() and config_file_dir is not None:
+            candidate_path = config_file_dir / candidate_path
+
+        if candidate_path.exists() and candidate_path.is_file():
+            file_content = candidate_path.read_text(encoding="utf-8")
+            return parse_species_list_values(file_content)
+
+        return parse_species_list_values(stripped)
+
+    raise ValueError("perch_species_list must be a string, list, or path to a text file")
 
 
 def validate_list_value(config, key):
@@ -301,7 +358,7 @@ def validate_recognizer_config(explicit_config, config_file):
  
 
 
-def validate_classify_config(explicit_config):
+def validate_classify_config(explicit_config, config_file):
     """ validate all the classify-related config values, including classify and classify_filetype. """
 
     normalize_bool_string(explicit_config, 'classify')
@@ -309,6 +366,8 @@ def validate_classify_config(explicit_config):
     classify_related_keys = [
         "classify_filetype",
         "classify_species_list",
+        "perch_species_list",
+        "perch_max_detections_per_window",
         "classify_output_path_template",
         "classify_output_path_type"
     ]
@@ -326,6 +385,25 @@ def validate_classify_config(explicit_config):
     validate_single_value(explicit_config, "classify")
 
     validate_single_value(explicit_config, "classify_filetype")
+
+    config_file_dir = config_file.parent if config_file is not None else Path(default_config_dir)
+    if "perch_species_list" in explicit_config:
+        explicit_config["perch_species_list"] = normalize_perch_species_list(
+            explicit_config.get("perch_species_list"),
+            config_file_dir=config_file_dir,
+        )
+        if explicit_config["perch_species_list"] == []:
+            raise ValueError("perch_species_list must contain at least one species when provided")
+
+    if "perch_max_detections_per_window" in explicit_config:
+        raw_value = explicit_config["perch_max_detections_per_window"]
+        try:
+            parsed_value = int(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("perch_max_detections_per_window must be an integer") from exc
+        if parsed_value <= 0:
+            raise ValueError("perch_max_detections_per_window must be > 0")
+        explicit_config["perch_max_detections_per_window"] = parsed_value
 
 
 def validate_sourcemap_config(explicit_config):
@@ -398,7 +476,7 @@ def load_config(config_path=None, args=None):
 
     validate_embedding_config(explicit_config)
     validate_recognizer_config(explicit_config, config_file)
-    validate_classify_config(explicit_config)
+    validate_classify_config(explicit_config, config_file)
     validate_sourcemap_config(explicit_config)
 
     

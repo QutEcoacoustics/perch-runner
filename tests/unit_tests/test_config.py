@@ -8,6 +8,7 @@ import yaml
 from src.config import (
     config_to_json,
     load_config,
+    normalize_perch_species_list,
     normalize_bool_string,
     parse_list_values,
     validate_single_value,
@@ -34,6 +35,20 @@ def _write_config(path: Path, payload: dict):
 class TestHelpers:
     def test_parse_list_values(self):
         assert parse_list_values("Parquet, csv") == ["csv", "parquet"]
+
+    def test_normalize_perch_species_list_inline_csv_and_newline(self):
+        species = normalize_perch_species_list("Koala,Emu\nCurrawong")
+        assert species == ["Koala", "Emu", "Currawong"]
+
+    def test_normalize_perch_species_list_from_list(self):
+        species = normalize_perch_species_list(["Koala", "Emu", "Koala"])
+        assert species == ["Koala", "Emu"]
+
+    def test_normalize_perch_species_list_from_file(self, tmp_path):
+        species_file = tmp_path / "species.txt"
+        species_file.write_text("Koala\nEmu,Currawong", encoding="utf-8")
+        species = normalize_perch_species_list(str(species_file))
+        assert species == ["Koala", "Emu", "Currawong"]
 
     def test_normalize_bool_string_mutates_dict(self):
         cfg = {"embed": "true", "save_db": "false"}
@@ -97,6 +112,75 @@ class TestLoadConfig:
         assert config["embeddings_table_filetype"] == "parquet"
         assert config["embeddings_output_path_template"] == "{analysis}{ext}"
         assert config["classify_output_path_template"] == "{analysis}{ext}"
+        assert config["perch_max_detections_per_window"] == 10
+
+    def test_perch_species_list_normalized_from_inline_string(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_species_list="Koala,Emu\nCurrawong",
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_species_list"] == ["Koala", "Emu", "Currawong"]
+
+    def test_perch_species_list_normalized_from_file_path(self, io_dirs, tmp_path):
+        source, output = io_dirs
+        species_file = tmp_path / "species.txt"
+        species_file.write_text("Koala\nEmu,Currawong", encoding="utf-8")
+
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_species_list=str(species_file),
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_species_list"] == ["Koala", "Emu", "Currawong"]
+
+    def test_perch_max_detections_per_window_parsed_as_int(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_max_detections_per_window="7",
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_max_detections_per_window"] == 7
+
+    def test_invalid_perch_max_detections_per_window_raises(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_max_detections_per_window="not_an_int",
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="perch_max_detections_per_window must be an integer"):
+            load_config(None, args)
+
+    def test_empty_perch_species_list_raises(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_species_list=[],
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="perch_species_list must contain at least one species"):
+            load_config(None, args)
 
     def test_cli_args_override_file(self, io_dirs, tmp_path):
         source, output = io_dirs

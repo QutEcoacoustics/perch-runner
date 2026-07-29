@@ -219,7 +219,7 @@ class SourcemapConfig:
         """Return a JSON-safe representation for logging/debug metadata."""
         return {
             "sourcemap_template": self.sourcemap_template,
-            "file_metadata_pattern": self.file_metadata_pattern,
+            "file_metadata_pattern": self.file_metadata_pattern.pattern if self.file_metadata_pattern is not None else None,
             "file_metadata": dict(self.file_metadata),
         }
 
@@ -246,21 +246,10 @@ class SourcemapConfig:
         if self.sourcemap_template is None:
             return lambda filename: filename  # identity function
 
-
         def mapper(filename: str) -> str:
             # copy of existing static metadata to which we will add any dynamically retrieved from the filename. 
             resolved_tokens = self.get_file_metadata(filename)
             result = _render_destination_template(self.sourcemap_template, resolved_tokens)
-
-            if result is None:
-                # fallback to identity if template rendering fails, probably due to missing token values.
-                # this could happen if the pattern fails to match required token values and the static metadata does not provide them either.
-                logging.warning(
-                    "Sourcemap template rendering failed for filename %r; returning original filename",
-                    filename,
-                )
-                return filename  
-
             return result
 
         return mapper
@@ -275,7 +264,7 @@ class SourcemapConfig:
         return extra_columns_mapper
 
 
-def build_sourcemap(sourcemap_config: SourcemapConfig | None) -> Callable[[str], str] | None:
+def build_sourcemap(sourcemap_config: SourcemapConfig | None) -> Callable[[str], str]:
     """Build a source-mapping callable from a resolved sourcemap config."""
     if sourcemap_config is None:
         return lambda filename: filename  # identity function

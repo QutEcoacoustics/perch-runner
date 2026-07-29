@@ -82,17 +82,31 @@ def resolve_species_class_names_for_model_choice(model_choice, ebird_code_to_nam
     )
 
 
-def _select_top_indices_above_threshold(window_logits, threshold, top_n):
-    """Return class indices with scores >= threshold, capped to top_n by score."""
+def _select_top_indices_above_threshold(window_logits, threshold, top_n, allowed_indices=None):
+    """Return class indices with scores >= threshold, optionally filtered, capped to top_n by score."""
     candidate_indices = np.where(window_logits >= threshold)[0]
     if len(candidate_indices) == 0:
         return candidate_indices
+
+    if allowed_indices is not None:
+        candidate_indices = candidate_indices[np.isin(candidate_indices, allowed_indices)]
+        if len(candidate_indices) == 0:
+            return candidate_indices
 
     candidate_scores = window_logits[candidate_indices]
     order = np.argsort(candidate_scores)[::-1]
     if top_n is not None:
         order = order[:top_n]
     return candidate_indices[order]
+
+
+def _validate_class_name_mapping(class_names, logits_width):
+    """Validate that logits class dimension matches available class names."""
+    if len(class_names) != logits_width:
+        raise ValueError(
+            "Mismatch between logits class dimension and resolved species names: "
+            f"logits_width={logits_width}, class_names={len(class_names)}"
+        )
 
 
 def process_source_id_with_logits(state, source_id, window_size_s):
@@ -154,7 +168,7 @@ def process_source_id_with_logits(state, source_id, window_size_s):
 
 
 class LogitSavingWorker(agile_embed.EmbedWorker):
-    def __init__(self, model_choice, logit_threshold=0.0, classifier_output_path=None, *args, **kwargs):
+    def __init__(self, model_choice, logit_threshold=0.0, classifier_output_path=None, perch_species_list=None, perch_max_detections_per_window=10, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.parquet_records = []
         self.lock = threading.Lock()
@@ -165,13 +179,25 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
 
         # save logits above this threshold
         self.logit_threshold = logit_threshold
-        self.max_classes_per_segment = 10
+        self.max_classes_per_segment = perch_max_detections_per_window
         self.logits_key = 'label'
+        self.perch_species_filter = None
+        self.perch_allowed_class_indices = None
+        self._validated_logits_shape = False
+        if perch_species_list:
+            self.perch_species_filter = {str(species).strip().casefold() for species in perch_species_list if str(species).strip()}
 
         self.class_names = resolve_species_class_names_for_model_choice(
             model_choice=model_choice,
         )
-        # self.class_list = preset_model.class_list
+        # create a set of indices corresponding to the allowed species for filtering logits
+        if self.perch_species_filter is not None:
+            allowed_indices = {
+                idx for idx, class_name in enumerate(self.class_names)
+                if class_name.casefold() in self.perch_species_filter
+            }
+            self.perch_allowed_class_indices = sorted(allowed_indices)
+        
 
 
     def embed_dataset(
@@ -251,19 +277,19 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                             for i, s in enumerate(sources):
                                 window_id = f"{s.file_id}_{offsets[i][0]}"
                                 window_logits = logts[i]
+                                if not self._validated_logits_shape:
+                                    _validate_class_name_mapping(self.class_names, int(window_logits.shape[-1]))
+                                    self._validated_logits_shape = True
                                 above_thresh_indices = _select_top_indices_above_threshold(
                                     window_logits=window_logits,
                                     threshold=self.logit_threshold,
                                     top_n=self.max_classes_per_segment,
+                                    allowed_indices=self.perch_allowed_class_indices,
                                 )
                                 for idx in above_thresh_indices:
                                     score = float(window_logits[idx])
+                                    species_name = self.class_names[idx]
 
-                                    # will crash if the classlist length doesn't match the logits length, I think that's ok
-                                    if idx < len(self.class_names):
-                                        species_name = self.class_names[idx]
-                                    else:
-                                        species_name = f"class_{idx}"
                                     self.parquet_records.append({
                                         "window_id": window_id,
                                         "recording_id": str(recording_ids[i]),
@@ -274,8 +300,12 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                             
         self.db.commit()
 
-        # Keep classify staging in sync with DB lifecycle: write immediately
-        # after a successful commit.
+        # Keep classify staging in sync with DB lifecycle: write immediately after a successful commit.
+        # Therefore, all detections stored in ram until the end (as will embeddings)
+        # Detections RAM will be much smaller than the embeddings under normal circumstances, 
+        # however if there are a lot of detections it could contribute to memory pressure. 
+        # rough calculation: 320 bytes per detection vs 3kb per embedding = 10 detections per for the same ram usage.
+        # Therefore, we will keep it as in ram for simplicity. 
         if self.classifier_output_path:
             self.export_parquet(self.classifier_output_path)
 

@@ -161,7 +161,9 @@ def export_classify_table(
         )
 
     recording_id_to_source = _load_recording_id_to_source(db_path)
-    recording_ids = sorted(df["recording_id"].dropna().astype(str).unique().tolist())
+    recording_id_series = df["recording_id"]
+    recording_id_series_str = recording_id_series.astype(str)
+    recording_ids = sorted(recording_id_series.loc[recording_id_series.notna()].astype(str).unique().tolist())
 
     missing_recording_ids = [rid for rid in recording_ids if rid not in recording_id_to_source]
     if missing_recording_ids:
@@ -205,7 +207,7 @@ def export_classify_table(
     try:
         for i, recording_id in enumerate(recording_ids, 1):
             source = recording_id_to_source[recording_id]
-            source_rows = df[df["recording_id"].astype(str) == recording_id].copy()
+            source_rows = df[recording_id_series_str == recording_id].copy()
             if source_rows.empty:
                 continue
 
@@ -445,8 +447,8 @@ def run_recognizers_over_db(
     output_parent: str | Path,
     recognizers,
     recognizer_results_filetype: str,
-    sourcemap: Callable[[str], str],
     output_template,
+    sourcemap: Callable[[str], str] | None,
     parquet_metadata: dict[str, str] | None = None,
     extra_columns: Callable[[str], dict] | None = None
 ):

@@ -3,6 +3,7 @@ import numpy as np
 from perch_hoplite.agile import embed as agile_embed
 from src.embed_and_save_logits_worker import (
     LogitSavingWorker,
+    _validate_class_name_mapping,
     resolve_species_class_names,
     _select_top_indices_above_threshold,
 )
@@ -41,6 +42,21 @@ def test_select_top_indices_returns_empty_when_no_scores_meet_threshold():
     got = _select_top_indices_above_threshold(logits, threshold=0.5, top_n=10)
 
     assert got.size == 0
+
+
+def test_select_top_indices_applies_allowed_indices_before_top_n():
+    logits = np.array([0.99, 0.98, 0.97, 0.40, 0.39, 0.38], dtype=np.float32)
+
+    # Top-2 globally would be indices [0, 1].
+    # With allowed indices [2, 3, 4] applied first, top-2 should be [2, 3].
+    got = _select_top_indices_above_threshold(
+        logits,
+        threshold=0.35,
+        top_n=2,
+        allowed_indices=[2, 3, 4],
+    )
+
+    assert got.tolist() == [2, 3]
 
 
 def test_resolve_species_class_names_for_perch_8_prefers_label_key():
@@ -97,6 +113,7 @@ def test_logit_worker_loads_class_names_for_perch_8(monkeypatch):
 
     assert worker.logits_key == "label"
     assert worker.class_names == ["species_a", "species_b"]
+    assert worker.max_classes_per_segment == 10
 
 
 def test_logit_worker_loads_class_names_for_perch_v2(monkeypatch):
@@ -123,3 +140,43 @@ def test_logit_worker_loads_class_names_for_perch_v2(monkeypatch):
 
     assert worker.logits_key == "label"
     assert worker.class_names == ["species_x", "species_y", "species_z"]
+
+
+def test_logit_worker_applies_custom_max_detections_and_species_filter(monkeypatch):
+    monkeypatch.setattr(
+        agile_embed.EmbedWorker,
+        "__init__",
+        lambda self, *args, **kwargs: None,
+    )
+
+    def _load_model_by_name(_model_choice):
+        return _PresetModel(
+            {
+                "labels": _ClassNames(["Koala", "Emu", "Currawong"]),
+            }
+        )
+
+    monkeypatch.setattr(
+        "perch_hoplite.zoo.model_configs.load_model_by_name",
+        _load_model_by_name,
+    )
+
+    worker = LogitSavingWorker(
+        model_choice="perch_v2",
+        perch_max_detections_per_window=4,
+        perch_species_list=["koala", "currawong"],
+    )
+
+    assert worker.max_classes_per_segment == 4
+    assert worker.perch_species_filter == {"koala", "currawong"}
+
+
+def test_validate_class_name_mapping_accepts_matching_lengths():
+    _validate_class_name_mapping(["a", "b", "c"], 3)
+
+
+def test_validate_class_name_mapping_raises_for_mismatch():
+    import pytest
+
+    with pytest.raises(ValueError, match="Mismatch between logits class dimension and resolved species names"):
+        _validate_class_name_mapping(["a", "b"], 3)

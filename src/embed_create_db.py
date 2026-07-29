@@ -192,6 +192,8 @@ def create_database(config: dict):
     worker = LogitSavingWorker(
         model_choice=model_config_key,
         logit_threshold=config.get('logit_threshold', 0.0),
+        perch_species_list=config.get('perch_species_list'),
+        perch_max_detections_per_window=config.get('perch_max_detections_per_window', 10),
         audio_sources=audio_sources,
         db=db,
         model_config=model_config,
