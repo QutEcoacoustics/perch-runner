@@ -60,10 +60,10 @@ all_config_options = {
     "dataset_name": ("search_set", "dataset name used in runner configuration"),
     "workers": ("auto", "number of worker threads for embedding, or 'auto' (default) to choose based on available RAM."),
     "db_path": ("db", "database output path. Relative paths are resolved under --output (default: db)"),
-    "sourcemap": (None, "optional sourcemap preset name used for source remapping"),
-    "sourcemap_values": (None, "optional JSON object/dict of template token values used for sourcemap rendering"),
+    "sourcemap_name": (None, "optional sourcemap preset name used for source remapping"),
+    "file_metadata": (None, "optional JSON object/dict of template token values used for sourcemap rendering"),
     "sourcemap_template": (None, "optional sourcemap destination template, e.g. https://.../{arid}/original"),
-    "sourcemap_pattern": (None, "optional sourcemap pattern preset name or regex used to extract named tokens from filename"),
+    "file_metadata_pattern": (None, "optional sourcemap pattern preset name or regex used to extract named tokens from filename"),
 
     "embed": (None, "enable embedding export (boolean flag). Use --embeddings_table_format and --embeddings_table_filetype to control output format."),
     "embeddings_table_format": ("serialized", "table format for embeddings, e.g. serialized, columns"),
@@ -258,7 +258,6 @@ def validate_embedding_config(explicit_config):
             explicit_config['embed'] = True
 
     validate_single_value(explicit_config, "embed")
-
     validate_single_value(explicit_config, "embeddings_table_format")
     validate_single_value(explicit_config, "embeddings_table_filetype")
 
@@ -333,39 +332,28 @@ def validate_sourcemap_config(explicit_config):
     """Validate and normalize sourcemap-related config values."""
     validate_single_value(explicit_config, "sourcemap")
 
-    if "sourcemap_values" in explicit_config:
-        token_vals = explicit_config.get("sourcemap_values")
-        if isinstance(token_vals, str):
+    if "file_metadata" in explicit_config:
+        file_metadata = explicit_config.get("file_metadata")
+        if isinstance(file_metadata, str):
             try:
-                token_vals = json.loads(token_vals)
+                file_metadata = json.loads(file_metadata)
             except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid sourcemap_values JSON: {e}") from e
+                raise ValueError(f"Invalid file_metadata JSON: {e}") from e
 
-        if token_vals is None:
-            explicit_config["sourcemap_values"] = None
-        elif not isinstance(token_vals, dict):
-            raise ValueError("sourcemap_values must be a dictionary or a JSON object string")
+        if file_metadata is None:
+            explicit_config["file_metadata"] = None
+        elif not isinstance(file_metadata, dict):
+            raise ValueError("file_metadata must be a dictionary or a JSON object string")
         else:
-            explicit_config["sourcemap_values"] = token_vals
+            explicit_config["file_metadata"] = file_metadata
 
-    has_template = bool(explicit_config.get("sourcemap_template"))
-    has_pattern = bool(explicit_config.get("sourcemap_pattern"))
-    has_values = bool(explicit_config.get("sourcemap_values"))
-    has_sourcemap = bool(explicit_config.get("sourcemap"))
-
-    if has_values and not (has_sourcemap or has_template):
-        raise ValueError("sourcemap_values requires sourcemap or sourcemap_template")
-
-    if has_pattern and not (has_sourcemap or has_template):
-        raise ValueError("sourcemap_pattern requires sourcemap or sourcemap_template")
-
+    # wrap these related configs in a dataclass object
     explicit_config["sourcemap_config"] = SourcemapConfig.from_inputs(
-        sourcemap=explicit_config.get("sourcemap"),
-        sourcemap_values=explicit_config.get("sourcemap_values"),
+        sourcemap_name=explicit_config.get("sourcemap_name"),
+        file_metadata=explicit_config.get("file_metadata"),
         sourcemap_template=explicit_config.get("sourcemap_template"),
-        sourcemap_pattern=explicit_config.get("sourcemap_pattern"),
+        file_metadata_pattern=explicit_config.get("file_metadata_pattern"),
     )
-
 
 
 def load_config(config_path=None, args=None):

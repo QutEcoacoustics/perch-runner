@@ -29,6 +29,9 @@ def _base_config(tmp_path, **overrides):
         "recognizers": [],
         "recognizer_results_filetype": "csv",
         "recognizer_output_path_template": "{analysis}{ext}",
+        "classify": False,
+        "classify_filetype": "csv",
+        "classify_output_path_template": "{analysis}{ext}",
         "sourcemap_config": None,
     }
     cfg.update(overrides)
@@ -95,7 +98,8 @@ class TestEmbedPipeline:
         config = _base_config(
             tmp_path,
             sourcemap_config=SourcemapConfig.from_inputs(
-                sourcemap="canonical_to_ecosounds_original",
+                sourcemap_name="ecosounds_original",
+                file_metadata={"arid": 909057},
             ),
         )
 
@@ -115,7 +119,8 @@ class TestEmbedPipeline:
             tmp_path,
             recognizers=[object()],
             sourcemap_config=SourcemapConfig.from_inputs(
-                sourcemap="canonical_to_ecosounds_original",
+                sourcemap_name="ecosounds_original",
+                file_metadata={"arid": 909057},
             ),
         )
 
@@ -127,6 +132,22 @@ class TestEmbedPipeline:
         _, kwargs = mock_run.call_args
         sourcemap_fn = kwargs["sourcemap"]
         assert callable(sourcemap_fn)
+
+    def test_classify_export_called_when_classify_enabled(self, tmp_path):
+        config = _base_config(tmp_path, classify=True)
+
+        def _create_db(cfg):
+            cfg["_classify_staging_path"] = Path(cfg["output"]) / ".classify_staging.parquet"
+            return 100.0
+
+        with mock.patch("src.embed.create_database", side_effect=_create_db), mock.patch(
+            "src.embed.export_classify_table"
+        ) as mock_classify_export, mock.patch("src.embed.export_embeddings_table"), mock.patch("src.embed.log_ram"):
+            embed.embed(config)
+
+        _, kwargs = mock_classify_export.call_args
+        assert kwargs["filetype"] == "csv"
+        assert kwargs["output_template"] == "{analysis}{ext}"
 
     def test_no_pattern_sourcemap_with_multiple_files_raises(self, tmp_path):
         config = _base_config(

@@ -63,13 +63,16 @@ class TestHelpers:
 
     def test_config_to_json_handles_sourcemap_config(self):
         sourcemap_config = SourcemapConfig.from_inputs(
-            sourcemap="canonical_to_baw_original",
-            sourcemap_values={"domain": "https://api.ecosounds.org"},
+            sourcemap_name="baw_original",
+            file_metadata={"domain": "https://api.ecosounds.org", "arid": 1234},
         )
         rendered = config_to_json({"sourcemap_config": sourcemap_config})
         parsed = json.loads(rendered)
         assert parsed["sourcemap_config"]["sourcemap_template"] == "{domain}/audio_recordings/{arid}/original"
-        assert parsed["sourcemap_config"]["sourcemap_values"] == {"domain": "https://api.ecosounds.org"}
+        assert parsed["sourcemap_config"]["file_metadata"] == {
+            "domain": "https://api.ecosounds.org",
+            "arid": "1234",
+        }
 
 
 class TestLoadConfig:
@@ -93,6 +96,7 @@ class TestLoadConfig:
         assert config["embeddings_table_format"] == "serialized"
         assert config["embeddings_table_filetype"] == "parquet"
         assert config["embeddings_output_path_template"] == "{analysis}{ext}"
+        assert config["classify_output_path_template"] == "{analysis}{ext}"
 
     def test_cli_args_override_file(self, io_dirs, tmp_path):
         source, output = io_dirs
@@ -210,34 +214,35 @@ class TestLoadConfig:
 
         assert not config["recognizers"]
 
-    def test_sourcemap_values_json_string_from_cli(self, io_dirs):
+    def test_file_metadata_json_string_from_cli(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap="canonical_to_baw_original",
-            sourcemap_values='{"domain": "https://api.ecosounds.org"}',
+            sourcemap_name="baw_original",
+            file_metadata='{"domain": "https://api.ecosounds.org", "arid": 1234}',
             config_file=None,
         )
 
         config = load_config(None, args)
-        assert config["sourcemap"] == "canonical_to_baw_original"
-        assert config["sourcemap_values"] == {"domain": "https://api.ecosounds.org"}
+        assert config["sourcemap_name"] == "baw_original"
+        assert config["file_metadata"] == {"domain": "https://api.ecosounds.org", "arid": 1234}
         assert isinstance(config["sourcemap_config"], SourcemapConfig)
 
-    def test_sourcemap_values_without_source_raises(self, io_dirs):
+    def test_file_metadata_without_sourcemap_is_allowed(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap_values={"domain": "https://api.ecosounds.org"},
+            file_metadata={"domain": "https://api.ecosounds.org"},
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="sourcemap_values requires sourcemap or sourcemap_template"):
-            load_config(None, args)
+        config = load_config(None, args)
+        assert config["file_metadata"] == {"domain": "https://api.ecosounds.org"}
+        assert isinstance(config["sourcemap_config"], SourcemapConfig)
 
     def test_invalid_sourcemap_raises(self, io_dirs):
         source, output = io_dirs
@@ -245,9 +250,9 @@ class TestLoadConfig:
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap="not_real",
+            sourcemap_name="not_real",
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="Invalid sourcemap value"):
+        with pytest.raises(ValueError, match="Unknown sourcemap name"):
             load_config(None, args)

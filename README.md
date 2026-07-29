@@ -53,9 +53,9 @@ docker run --rm \
 | `--dataset_name` | Dataset name used in runner configuration | `search_set` |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
 | `--sourcemap` | Optional sourcemap preset used to rewrite the output `source` value | None |
-| `--sourcemap_values` | Optional JSON object of token values used to fill sourcemap template placeholders | None |
+| `--file_metadata` | Optional JSON object of token values used to fill sourcemap template placeholders | None |
 | `--sourcemap_template` | Optional sourcemap destination template, e.g. `https://.../audio_recordings/{arid}/original` | None |
-| `--sourcemap_pattern` | Optional regex (or preset name) used to extract named token values from basename | None |
+| `--file_metadata_pattern` | Optional regex (or preset name) used to extract named token values from basename | None |
 | `--save_db` | Persist the hoplite embedding database. Use --save_db with no value to enable (default: false) | `false` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
 | `--workers` | Worker count or `auto` | `auto` |
@@ -209,16 +209,16 @@ Selects a hardcoded sourcemap preset that can provide a default template and opt
 
 #### --sourcemap_template
 
-Defines the output template directly. Use `{token}` placeholders for values from `--sourcemap_values` and/or named groups extracted by `--sourcemap_pattern`.
+Defines the output template directly. Use `{token}` placeholders for values from `--file_metadata` and/or named groups extracted by `--file_metadata_pattern`.
 
 Examples:
 
 - Constant mapping for every row:
   - `analyze --embed --sourcemap_template 'https://api.ecosounds.org/audio_recordings/1234/original'`
 - Pattern + values mapping:
-  - `analyze --embed --sourcemap_template '{domain}/audio_recordings/{arid}/original' --sourcemap_pattern canonical_filename --sourcemap_values '{"domain":"https://api.ecosounds.org"}'`
+  - `analyze --embed --sourcemap_template '{domain}/audio_recordings/{arid}/original' --file_metadata_pattern canonical_filename --file_metadata '{"domain":"https://api.ecosounds.org"}'`
 
-#### --sourcemap_pattern
+#### --file_metadata_pattern
 
 Optional pattern used to extract named token values from each basename.
 
@@ -226,7 +226,7 @@ Optional pattern used to extract named token values from each basename.
 - Can also be the preset name `canonical_filename`.
 - If a pattern is set and does not match a file basename, that file's source is left unchanged.
 
-#### --sourcemap_values
+#### --file_metadata
 
 JSON object (CLI string or config file object) used to provide static template token values.
 

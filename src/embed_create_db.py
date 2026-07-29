@@ -196,15 +196,14 @@ def create_database(config: dict):
         db=db,
         model_config=model_config,
         audio_worker_threads=num_workers,
+        classifier_output_path=config.get("_classify_staging_path"),
+        
     )
 
     t0 = time.monotonic()
     log.info("Starting model inference...")
     worker.process_all(target_dataset_name=dataset_name)
 
-    #TODO: wire in confg for where to save this.
-    # for now we are just getting it running at all. 
-    worker.export_parquet(output / "perch_predictions.parquet")
     elapsed = time.monotonic() - t0
     log.info("Model inference finished in %.1fs", elapsed)
     log_ram()

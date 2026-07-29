@@ -5,6 +5,81 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from concurrent import futures
 from perch_hoplite.agile import embed as agile_embed
+from perch_hoplite.taxonomy import namespace_db
+
+
+def _species_key_candidates(model_choice):
+    if model_choice == 'perch_8':
+        return ('label', 'labels')
+    if model_choice == 'perch_v2':
+        return ('labels', 'label')
+    return ('label', 'labels')
+
+
+def _extract_species_codes_from_class_list(class_list, model_choice):
+    """Return logits-aligned species identifiers as a list of strings."""
+    if isinstance(class_list, dict):
+        for key in _species_key_candidates(model_choice):
+            labels_obj = class_list.get(key)
+            if labels_obj is not None and hasattr(labels_obj, 'classes'):
+                return [str(c) for c in labels_obj.classes]
+
+        flat_classes = class_list.get('classes', [])
+        return [str(c) for c in flat_classes]
+
+    if hasattr(class_list, 'classes'):
+        return [str(c) for c in class_list.classes]
+
+    return []
+
+
+def _load_ebird2021_code_to_scientific_name():
+    """Return eBird species code -> Clements scientific name mapping."""
+    db = namespace_db.load_db()
+    clements_to_species = db.mappings.get('ebird2021_clements_to_species')
+    if clements_to_species is None:
+        return {}
+
+    # Reverse clements->species mapping into species->clements lookup.
+    return {
+        species_code: scientific_name
+        for scientific_name, species_code in clements_to_species.mapped_pairs.items()
+    }
+
+
+def resolve_species_class_names(
+    class_list,
+    model_choice,
+    ebird_code_to_name=None,
+):
+    """Resolve logits-aligned species names for either perch_8 or perch_v2.
+
+    For perch_8, species IDs are typically eBird codes. If a mapping is
+    available, codes are converted to display names.
+    """
+    species_codes = _extract_species_codes_from_class_list(class_list, model_choice)
+
+    if model_choice != 'perch_8':
+        return species_codes
+
+    if ebird_code_to_name is None:
+        ebird_code_to_name = _load_ebird2021_code_to_scientific_name()
+    if not ebird_code_to_name:
+        return species_codes
+
+    return [ebird_code_to_name.get(code, code) for code in species_codes]
+
+
+def resolve_species_class_names_for_model_choice(model_choice, ebird_code_to_name=None):
+    from perch_hoplite.zoo import model_configs
+
+    preset_model = model_configs.load_model_by_name(model_choice)
+    class_list = getattr(preset_model, 'class_list', None)
+    return resolve_species_class_names(
+        class_list=class_list,
+        model_choice=model_choice,
+        ebird_code_to_name=ebird_code_to_name,
+    )
 
 
 def _select_top_indices_above_threshold(window_logits, threshold, top_n):
@@ -47,11 +122,13 @@ def process_source_id_with_logits(state, source_id, window_size_s):
     if embeddings is None:
         return
         
-    # Extract species logits if available (Perch v2 commonly uses 'label').
-    logits_dict = outputs.logits or {}
-    logits_array = logits_dict.get('label')
-    if logits_array is None and logits_dict:
-        logits_array = next(iter(logits_dict.values()))
+    logits_array = None
+    if worker.classifier_output_path:
+        # Extract species logits only when classify output is enabled.
+        logits_dict = outputs.logits or {}
+        logits_array = logits_dict.get(worker.logits_key)
+        if logits_array is None and logits_dict:
+            logits_array = next(iter(logits_dict.values()))
 
     sources = []
     offsets = []
@@ -77,11 +154,11 @@ def process_source_id_with_logits(state, source_id, window_size_s):
 
 
 class LogitSavingWorker(agile_embed.EmbedWorker):
-    def __init__(self, model_choice, logit_threshold=0.0, *args, **kwargs):
+    def __init__(self, model_choice, logit_threshold=0.0, classifier_output_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.parquet_records = []
         self.lock = threading.Lock()
-        
+        self.classifier_output_path = classifier_output_path
         #self.class_list = list(getattr(self.embedding_model, 'class_list', []) or [])
 
 
@@ -89,21 +166,11 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
         # save logits above this threshold
         self.logit_threshold = logit_threshold
         self.max_classes_per_segment = 10
+        self.logits_key = 'label'
 
-        from perch_hoplite.zoo import model_configs
-        preset_model = model_configs.load_model_by_name(model_choice)
-        class_list = getattr(preset_model, 'class_list', None)
-
-        if isinstance(class_list, dict):
-            labels_obj = class_list.get('labels')
-            if labels_obj is not None and hasattr(labels_obj, 'classes'):
-                self.class_names = labels_obj.classes
-            else:
-                self.class_names = class_list.get('classes', [])
-        elif hasattr(class_list, 'classes'):
-            self.class_names = class_list.classes
-        else:
-            self.class_names = []
+        self.class_names = resolve_species_class_names_for_model_choice(
+            model_choice=model_choice,
+        )
         # self.class_list = preset_model.class_list
 
 
@@ -179,7 +246,7 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                     
                     # todo: we might get some confusing behaviour if there is an existing database and we are adding new embeddings to it. 
                     # we will only get predictions for the new sources.  
-                    if logts:
+                    if logts and self.classifier_output_path:
                         with self.lock:
                             for i, s in enumerate(sources):
                                 window_id = f"{s.file_id}_{offsets[i][0]}"
@@ -206,6 +273,11 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                                     })
                             
         self.db.commit()
+
+        # Keep classify staging in sync with DB lifecycle: write immediately
+        # after a successful commit.
+        if self.classifier_output_path:
+            self.export_parquet(self.classifier_output_path)
 
     def export_parquet(self, filepath):
         """Export the captured records to Parquet."""
