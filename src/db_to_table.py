@@ -10,7 +10,7 @@ Things like
 - loading the database
 - grouping windows by source
 - building a DataFrame for each source
-- resolving the output path for each source (which might be shared by multiple sources if the output template does not include {basename})
+- resolving the output path for each source (which might be shared by multiple sources if the output template does not include {filestem})
 - appending output to in-progress files
 - cleaning up in-progress files by deduping, sorting, and renaming to final output
 are all shared between the two operations.

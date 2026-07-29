@@ -72,7 +72,7 @@ def test_run_recognizers_over_db_classifies_each_source_once(tmp_path, monkeypat
         recognizer_results_filetype="csv",
         sourcemap=None,
         output_template="results{ext}",
-        extra_columns=lambda src: {"arid": src.split("/")[0]},
+        extra_columns=lambda src: {"audio_recording_id": src.split("/")[0]},
     )
 
     # classify_table called exactly once per source (2 sources)
@@ -84,7 +84,7 @@ def test_run_recognizers_over_db_classifies_each_source_once(tmp_path, monkeypat
     output_df = pd.read_csv(output_files[0])
     assert len(output_df) == 2
     assert set(output_df["label"].tolist()) == {"Koala"}
-    assert set(output_df["arid"].tolist()) == {"site1", "site2"}
+    assert set(output_df["audio_recording_id"].tolist()) == {"site1", "site2"}
 
 
 def test_export_classify_table_routes_rows_by_template_and_source(tmp_path, monkeypatch):
@@ -109,12 +109,12 @@ def test_export_classify_table_routes_rows_by_template_and_source(tmp_path, monk
         db_path=tmp_path / "fake_db",
         output_path=tmp_path,
         filetype="csv",
-        output_template="{parents}/{basename}/classify{ext}",
+        output_template="{parents}/{filestem}/classify{ext}",
         sourcemap=None,
     )
 
-    first = tmp_path / "x" / "site1.wav" / "classify.csv"
-    second = tmp_path / "y" / "site2.wav" / "classify.csv"
+    first = tmp_path / "x" / "site1" / "classify.csv"
+    second = tmp_path / "y" / "site2" / "classify.csv"
     assert first.exists()
     assert second.exists()
 
@@ -148,11 +148,11 @@ def test_export_classify_table_applies_sourcemap(tmp_path, monkeypatch):
         filetype="csv",
         output_template="classify{ext}",
         sourcemap=lambda src: f"mapped::{src}",
-        extra_columns=lambda src: {"arid": src.split("/")[0]},
+        extra_columns=lambda src: {"audio_recording_id": src.split("/")[0]},
     )
 
     out = tmp_path / "classify.csv"
     assert out.exists()
     out_df = pd.read_csv(out)
     assert out_df.iloc[0]["source"] == "mapped::nested/file.wav"
-    assert out_df.iloc[0]["arid"] == "nested"
+    assert out_df.iloc[0]["audio_recording_id"] == "nested"

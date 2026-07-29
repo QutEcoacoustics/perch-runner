@@ -112,7 +112,7 @@ def embed(config: dict):
     
     save_db = config.get('save_db', False)
     sourcemap = build_sourcemap(sourcemap_config)
-    extra_columns = build_extra_columns_map(sourcemap_config, ["arid"])
+    extra_columns = build_extra_columns_map(sourcemap_config, ["audio_recording_id"])
 
     if config['embed']:
         export_embeddings_table(

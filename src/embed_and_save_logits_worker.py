@@ -266,7 +266,7 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                                         species_name = f"class_{idx}"
                                     self.parquet_records.append({
                                         "window_id": window_id,
-                                        "recording_id": s.file_id,
+                                        "recording_id": str(recording_ids[i]),
                                         "offset_s": offsets[i][0],
                                         "species": species_name,
                                         "score": score,

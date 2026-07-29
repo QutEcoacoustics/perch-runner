@@ -35,15 +35,15 @@ valid_values = {
     "embed": [True, False],
     "embeddings_table_format": ["serialized", "columns"],
     "embeddings_table_filetype": ["parquet", "csv"],
-    "embeddings_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
+    "embeddings_output_path_type": ["flat_filestem", "nested_filestem", "nested", "flat"],
     "classify": [True, False],
     "classify_filetype": ["parquet", "csv"], # todo: maybe add hoplite as a way to save result if perch team adds that feature
-    "classify_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
+    "classify_output_path_type": ["flat_filestem", "nested_filestem", "nested", "flat"],
     "recognizer_results_filetype": ["parquet", "csv"],
-    "recognizer_output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
-    "output_path_type": ["flat_basename", "nested_basename", "nested", "flat"],
+    "recognizer_output_path_type": ["flat_filestem", "nested_filestem", "nested", "flat"],
+    "output_path_type": ["flat_filestem", "nested_filestem", "nested", "flat"],
     "save_db": [True, False],
-    "sourcemap": get_sourcemap_preset_names(),
+    "sourcemap_name": get_sourcemap_preset_names(),
 }
 
 
@@ -62,18 +62,18 @@ all_config_options = {
     "db_path": ("db", "database output path. Relative paths are resolved under --output (default: db)"),
     "sourcemap_name": (None, "optional sourcemap preset name used for source remapping"),
     "file_metadata": (None, "optional JSON object/dict of template token values used for sourcemap rendering"),
-    "sourcemap_template": (None, "optional sourcemap destination template, e.g. https://.../{arid}/original"),
+    "sourcemap_template": (None, "optional sourcemap destination template, e.g. https://.../{audio_recording_id}/original"),
     "file_metadata_pattern": (None, "optional sourcemap pattern preset name or regex used to extract named tokens from filename"),
 
     "embed": (None, "enable embedding export (boolean flag). Use --embeddings_table_format and --embeddings_table_filetype to control output format."),
     "embeddings_table_format": ("serialized", "table format for embeddings, e.g. serialized, columns"),
     "embeddings_table_filetype": ("parquet", "file format for the embedding table"),
-    "embeddings_output_path_template": (None, "custom output path template for embeddings files. Supported tokens: {parents}, {basename}, {ext}, {embeddings_table_format}, {analysis}."),
-    "embeddings_output_path_type": (None, "preset output path type for embeddings: flat_basename, nested_basename, nested, flat"),
+    "embeddings_output_path_template": (None, "custom output path template for embeddings files. Supported tokens: {parents}, {filestem}, {ext}, {embeddings_table_format}, {analysis}."),
+    "embeddings_output_path_type": (None, "preset output path type for embeddings: flat_filestem, nested_filestem, nested, flat"),
 
     "recognizers": (None, "path to recognizers JSON file. The file may contain either a recognizers list/dict or an object with a top-level 'recognizers' key."),
-    "recognizer_output_path_template": (None, "custom output path template for recognizer result files. Supported tokens: {classifier_name}, {parents}, {basename}, {ext}, {analysis}."),
-    "recognizer_output_path_type": (None, "preset output path type for recognizer results: flat_basename, nested_basename, nested, flat"),
+    "recognizer_output_path_template": (None, "custom output path template for recognizer result files. Supported tokens: {classifier_name}, {parents}, {filestem}, {ext}, {analysis}."),
+    "recognizer_output_path_type": (None, "preset output path type for recognizer results: flat_filestem, nested_filestem, nested, flat"),
     "recognizer_results_filetype": ("csv", "file format for recognizer results"),
 
     "classify": (False, "enable classify output (boolean flag). Use --classify_filetype to control output format."),
@@ -82,7 +82,7 @@ all_config_options = {
     "classify_output_path_template": (None, "custom output path template for classification files"),
     "classify_output_path_type": (None, "preset output path type for classification files"),
 
-    "output_path_type": (None, "preset output path type applied to both embeddings and recognizer results (overridden by more specific keys): flat_basename, nested_basename, nested, flat"),
+    "output_path_type": (None, "preset output path type applied to both embeddings and recognizer results (overridden by more specific keys): flat_filestem, nested_filestem, nested, flat"),
 
     "log_level": ("INFO", "log level for perch-runner output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)"),
     "hoplite_log_level": ("WARNING", "log level for perch-hoplite / library output: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: WARNING)"),
@@ -330,7 +330,7 @@ def validate_classify_config(explicit_config):
 
 def validate_sourcemap_config(explicit_config):
     """Validate and normalize sourcemap-related config values."""
-    validate_single_value(explicit_config, "sourcemap")
+    validate_single_value(explicit_config, "sourcemap_name")
 
     if "file_metadata" in explicit_config:
         file_metadata = explicit_config.get("file_metadata")

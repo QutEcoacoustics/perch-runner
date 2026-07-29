@@ -18,14 +18,14 @@ class TestSourcemapConfig:
     def test_invalid_pattern_rejected(self):
         with pytest.raises(ValueError, match="Invalid source_map_pattern"):
             SourcemapConfig.from_inputs(
-                sourcemap_template="{arid}",
+                sourcemap_template="{audio_recording_id}",
                 file_metadata_pattern=r"(unclosed",
             )
 
     def test_missing_template_tokens_rejected(self):
         with pytest.raises(ValueError, match="missing token values"):
             SourcemapConfig.from_inputs(
-                sourcemap_template="{domain}/audio_recordings/{arid}/original",
+                sourcemap_template="{domain}/audio_recordings/{audio_recording_id}/original",
                 file_metadata={},
             )
 
@@ -39,12 +39,12 @@ class TestSourcemapMapping:
     def test_named_template_with_static_tokens(self):
         cfg = SourcemapConfig.from_inputs(
             sourcemap_name="baw_original",
-            file_metadata={"domain": "https://api.acousticsobservatory.org", "arid": 909057},
+            file_metadata={"domain": "https://api.acousticsobservatory.org", "audio_recording_id": 909057},
         )
         fn = build_sourcemap(cfg)
         assert fn("x/any.wav") == "https://api.acousticsobservatory.org/audio_recordings/909057/original"
 
-    def test_named_template_with_pattern_extracted_arid(self):
+    def test_named_template_with_pattern_extracted_audio_recording_id(self):
         cfg = SourcemapConfig.from_inputs(
             sourcemap_name="ecosounds_original",
             file_metadata_pattern="canonical_filename",
@@ -65,8 +65,8 @@ class TestSourcemapMapping:
 
     def test_custom_template_pattern_and_static_token(self):
         cfg = SourcemapConfig.from_inputs(
-            sourcemap_template="{domain}/audio_recordings/{arid}/original",
-            file_metadata_pattern=r"^(?P<arid>\d+)\.wav$",
+            sourcemap_template="{domain}/audio_recordings/{audio_recording_id}/original",
+            file_metadata_pattern=r"^(?P<audio_recording_id>\d+)\.wav$",
             file_metadata={"domain": "https://api.ecosounds.org"},
         )
         fn = build_sourcemap(cfg)
@@ -75,7 +75,7 @@ class TestSourcemapMapping:
 
 class TestExtraColumnsMap:
     def test_none_config_returns_empty_dict_mapper(self):
-        fn = build_extra_columns_map(None, ["arid"])
+        fn = build_extra_columns_map(None, ["audio_recording_id"])
         assert fn("x/file.wav") == {}
 
     def test_extra_columns_from_pattern_and_static_tokens(self):
@@ -83,8 +83,8 @@ class TestExtraColumnsMap:
             file_metadata_pattern="canonical_filename",
             file_metadata={"domain": "https://api.ecosounds.org"},
         )
-        fn = build_extra_columns_map(cfg, ["arid", "domain", "missing"])
+        fn = build_extra_columns_map(cfg, ["audio_recording_id", "domain", "missing"])
         assert fn("x/20210428T100000Z_Five-Rivers-Dry-A_909057.flac") == {
-            "arid": "909057",
+            "audio_recording_id": "909057",
             "domain": "https://api.ecosounds.org",
         }

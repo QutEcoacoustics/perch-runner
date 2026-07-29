@@ -38,24 +38,24 @@ docker run --rm \
 | `--embed` | Enable embedding export (boolean flag). Use `--embed` with no value to enable | `false` |
 | `--embeddings_table_format` | Table layout: `serialized` or `columns` | `serialized` |
 | `--embeddings_table_filetype` | File format for the embedding table: `parquet` or `csv` | `parquet` |
-| `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{basename}`, `{ext}`, `{embeddings_table_format}`, `{analysis}` | `{analysis}{ext}` |
-| `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
+| `--embeddings_output_path_template` | Output path template for embedding files. Tokens: `{parents}`, `{filestem}`, `{ext}`, `{embeddings_table_format}`, `{analysis}` | `{analysis}{ext}` |
+| `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_filestem`, `nested_filestem`, `nested`, `flat` | `flat` |
 | `--classify` | Enable Perch global classification output (boolean flag). Use `--classify` with no value to enable | `false` |
 | `--classify_filetype` | File format for classification output: `parquet` or `csv` | `csv` |
-| `--classify_output_path_template` | Output path template for classification files | None |
-| `--classify_output_path_type` | Preset output layout for classification files: `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
+| `--classify_output_path_template` | Output path template for classification files | `{analysis}{ext}` |
+| `--classify_output_path_type` | Preset output layout for classification files: `flat_filestem`, `nested_filestem`, `nested`, `flat` | `flat` |
 | `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
 | `--recognizer_results_filetype` | File format for recognizer results: `parquet` or `csv` | `csv` |
-| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{basename}`, `{ext}`, `{analysis}` | `{analysis}{ext}` |
-| `--recognizer_output_path_type` | Preset output layout for recognizer results: `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
+| `--recognizer_output_path_template` | Output path template for recognizer result files. Tokens: `{classifier_name}`, `{parents}`, `{filestem}`, `{ext}`, `{analysis}` | `{analysis}{ext}` |
+| `--recognizer_output_path_type` | Preset output layout for recognizer results: `flat_filestem`, `nested_filestem`, `nested`, `flat` | `flat` |
 | `--model_choice` | Model to use: `perch_v2` or `perch_8` | `perch_v2` |
-| `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_basename`, `nested_basename`, `nested`, `flat` | `flat` |
+| `--output_path_type` | Preset output layout applied to both embeddings and recognizer results (overridden by more specific keys): `flat_filestem`, `nested_filestem`, `nested`, `flat` | `flat` |
 | `--dataset_name` | Dataset name used in runner configuration | `search_set` |
 | `--db_path` | Database path; relative paths resolve under output | `db` |
-| `--sourcemap` | Optional sourcemap preset used to rewrite the output `source` value | None |
+| `--sourcemap_name` | Optional sourcemap preset used to rewrite the output `source` value | None |
 | `--file_metadata` | Optional JSON object of token values used to fill sourcemap template placeholders | None |
-| `--sourcemap_template` | Optional sourcemap destination template, e.g. `https://.../audio_recordings/{arid}/original` | None |
-| `--file_metadata_pattern` | Optional regex (or preset name) used to extract named token values from basename | None |
+| `--sourcemap_template` | Optional sourcemap destination template, e.g. `https://.../audio_recordings/{audio_recording_id}/original` | None |
+| `--file_metadata_pattern` | Optional regex (or preset name) used to extract named token values from filestem | None |
 | `--save_db` | Persist the hoplite embedding database. Use --save_db with no value to enable (default: false) | `false` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
 | `--workers` | Worker count or `auto` | `auto` |
@@ -120,7 +120,7 @@ using a template.
 
 - Supported tokens: 
   - `{parents}` the parent directories of the audio file, relative to the source directory
-  - `{basename}` the filename of the source audio file (including extension)
+  - `{filestem}` the filename of the source audio file, without extension
   - `{ext}` the extension of the output format, e.g. `.parquet`, `.csv`
   - `{embeddings_table_format}` the table format e.g. `serialized` or `columns`
   - `{analysis}` the output type — for embeddings this is always `embeddings`
@@ -130,7 +130,7 @@ using a template.
 Examples:
 
 - `{analysis}{ext}` (default — all recordings are merged into a single file, e.g. `embeddings.parquet`)
-- `{parents}/{basename}/{embeddings_table_format}/embeddings{ext}`
+- `{parents}/{filestem}/{embeddings_table_format}/embeddings{ext}`
 
 If exporting both parquet table formats, include `{embeddings_table_format}` in the template to avoid path collisions.
 
@@ -140,8 +140,8 @@ If more than one source audio files map to the same output file, they will all b
 
 Preset output paths (mutually exclusive with `--embeddings_output_path_template`):
 
-- `flat_basename` -> `{basename}{ext}`
-- `nested_basename` -> `{parents}/{basename}{ext}`
+- `flat_filestem` -> `{filestem}{ext}`
+- `nested_filestem` -> `{parents}/{filestem}{ext}`
 - `nested` -> `{parents}/{analysis}{ext}`
 - `flat` -> `{analysis}{ext}` (all recordings in a single file, e.g. `embeddings.parquet`)
 
@@ -161,7 +161,7 @@ Output path template for recognizer result files. Controls where results are wri
 - Supported tokens:
   - `{classifier_name}` the recognizer's name
   - `{parents}` parent directories of the source audio file
-  - `{basename}` basename of the source audio file, without extension
+  - `{filestem}` filestem of the source audio file, without extension
   - `{ext}` output file extension, e.g. `.csv`, `.parquet`
   - `{analysis}` the output type — for recognizer results this is always `recognizer_results`
 - Must be a relative path.
@@ -170,7 +170,7 @@ Output path template for recognizer result files. Controls where results are wri
 
 Examples:
 
-- `{classifier_name}/{parents}/{basename}/{analysis}{ext}` (one directory per recognizer, mirroring source structure)
+- `{classifier_name}/{parents}/{filestem}/{analysis}{ext}` (one directory per recognizer, mirroring source structure)
 - `{classifier_name}/{analysis}{ext}` (one flat file per recognizer, all recordings merged)
 - `{analysis}{ext}` (single file, all recognizers and recordings merged — use with care)
 
@@ -178,8 +178,8 @@ Examples:
 
 Preset output paths for recognizer results (mutually exclusive with `--recognizer_output_path_template`):
 
-- `flat_basename` -> `{basename}{ext}`
-- `nested_basename` -> `{parents}/{basename}{ext}`
+- `flat_filestem` -> `{filestem}{ext}`
+- `nested_filestem` -> `{parents}/{filestem}{ext}`
 - `nested` -> `{parents}/{analysis}{ext}`
 - `flat` -> `{analysis}{ext}` (all recordings for all recognizers in a single file)
 
@@ -189,7 +189,7 @@ Note: these presets do not include `{classifier_name}`, so results from multiple
 
 Applies a preset layout to both embeddings and recognizer results at once. The more specific `embeddings_output_path_type` and `recognizer_output_path_type` take priority if also set.
 
-- Accepted values: `flat_basename`, `nested_basename`, `nested`, `flat`
+- Accepted values: `flat_filestem`, `nested_filestem`, `nested`, `flat`
 - Equivalent to setting both `--embeddings_output_path_type` and `--recognizer_output_path_type` to the same value.
 - If unset, it resolves to `flat`.
 
@@ -200,12 +200,12 @@ Location for the internal embedding database.
 - Relative paths are resolved under `--output`.
 - Default is `db`, which resolves to `<output>/db`.
 
-#### --sourcemap
+#### --sourcemap_name
 
-Selects a hardcoded sourcemap preset that can provide a default template and optional pattern.
+Selects a hardcoded sourcemap preset template.
 
 - If unset (and no other sourcemap options are set), source paths are written unchanged.
-- Current presets: `a2o_original`, `baw_original`, `canonical_to_a2o_original`, `canonical_to_baw_original`, `canonical_to_ecosounds_original`, `ecosounds_original`
+- Current presets: `a2o_original`, `baw_original`, `ecosounds_original`
 
 #### --sourcemap_template
 
@@ -216,15 +216,15 @@ Examples:
 - Constant mapping for every row:
   - `analyze --embed --sourcemap_template 'https://api.ecosounds.org/audio_recordings/1234/original'`
 - Pattern + values mapping:
-  - `analyze --embed --sourcemap_template '{domain}/audio_recordings/{arid}/original' --file_metadata_pattern canonical_filename --file_metadata '{"domain":"https://api.ecosounds.org"}'`
+  - `analyze --embed --sourcemap_template '{domain}/audio_recordings/{audio_recording_id}/original' --file_metadata_pattern canonical_filename --file_metadata '{"domain":"https://api.ecosounds.org"}'`
 
 #### --file_metadata_pattern
 
-Optional pattern used to extract named token values from each basename.
+Optional pattern used to extract named token values from each filestem.
 
-- Can be a raw regex with named groups, e.g. `(?P<arid>\d+)`.
+- Can be a raw regex with named groups, e.g. `(?P<audio_recording_id>\d+)`.
 - Can also be the preset name `canonical_filename`.
-- If a pattern is set and does not match a file basename, that file's source is left unchanged.
+- If a required token cannot be resolved for a file, sourcemap rendering raises an error.
 
 #### --file_metadata
 
@@ -242,7 +242,7 @@ Controls whether the hoplite embedding database is saved after processing.
   - `--save_db true` (or `--save_db` with no value): Database is saved at the location specified by `--db_path`.
   - `--save_db false` (default): If the database folder specified by `--db_path` already exists, it is preserved and used. If the folder does not exist, a temporary database is created, used for exports, and then deleted.
 - Validation:
-  - At least one of `--embed`, `--classify`, or `--save_db` must be specified.
+  - At least one of `--embed`, `--classify`, `--save_db`, or `--recognizers` must be specified.
   - You can specify `--save_db true` without `--embed` to create and save only the database.
 
 Usage examples:
@@ -258,13 +258,14 @@ Controls embedding worker count passed to perch-hoplite
 - `auto` (default): computed from available RAM.
 - Integer value: explicit worker count. 
 
-#### --classify [format]
+#### --classify
 
-Classification output selector.
+Enable Perch classify output.
 
-- Allowed values: `parquet`, `csv`, `hoplite`
-- `--classify` with no value defaults to `csv`
-- Classification pipeline is currently not implemented.
+- Use `--classify` or `--classify true` to enable.
+- Use `--classify false` to explicitly disable.
+- File format is controlled by `--classify_filetype` (`csv` or `parquet`).
+- Current app behavior: classify export runs in the embedding pipeline path, so in practice you must also set at least one of `--embed`, `--save_db`, or `--recognizers`.
 
 #### --model_choice
 
@@ -301,6 +302,59 @@ Logging controls.
 - `--tf_log_level`: TensorFlow C++ logs.
 - `--log_file`: optional file output in addition to console.
 
+## Examples
+
+### Single file, recognizer output, BAW sourcemap, add audio_recording_id column
+
+```bash
+docker run --rm \
+  -v /path/to/audio_file.wav:/mnt/input/audio_file.wav \
+  -v /path/to/recognizers.json:/mnt/config/recognizers.json \
+  -v /path/to/output:/mnt/output \
+  qutecoacoustics/perchrunner:latest analyze \
+  --source /mnt/input/audio_file.wav \
+  --recognizers /mnt/config/recognizers.json \
+  --sourcemap_name baw_original \
+  --file_metadata '{"domain":"https://api.acousticsobservatory.org.au","audio_recording_id":"1234"}'
+```
+
+Notes:
+
+- `audio_recording_id` is currently requested by runner for extra-column injection in recognizer/classify exports.
+- Replace `1234` and `domain` with your real values.
+
+### Single file, Perch classify output
+
+```bash
+docker run --rm \
+  -v /path/to/audio_file.wav:/mnt/input/audio_file.wav \
+  -v /path/to/output:/mnt/output \
+  qutecoacoustics/perchrunner:latest analyze \
+  --source /mnt/input/audio_file.wav \
+  --classify \
+  --save_db \
+  --classify_filetype csv
+```
+
+Notes:
+
+- `--save_db` is included to ensure the embed pipeline path runs, which is where classify export currently happens.
+
+### Single file, embeddings parquet flat to embeddings.parquet, BAW sourcemap
+
+```bash
+docker run --rm \
+  -v /path/to/audio_file.wav:/mnt/input/audio_file.wav \
+  -v /path/to/output:/mnt/output \
+  qutecoacoustics/perchrunner:latest analyze \
+  --source /mnt/input/audio_file.wav \
+  --embed \
+  --embeddings_table_filetype parquet \
+  --embeddings_output_path_type flat \
+  --sourcemap_name baw_original \
+  --file_metadata '{"domain":"https://api.acousticsobservatory.org.au","audio_recording_id":"1234"}'
+```
+
 ### Supported Audio Formats
 
 `.wav`, `.flac`, `.mp3`, `.ogg`
@@ -315,7 +369,7 @@ With defaults (`output_path_type=flat`), output is merged by analysis into a sin
   recognizer_results.csv
 ```
 
-If you set `nested` or `nested_basename`, output can mirror source subdirectories.
+If you set `nested` or `nested_filestem`, output can mirror source subdirectories.
 
 Each Parquet file contains one row per 5-second window with columns: `source`, `channel`, `offset`, `embeddings` (serialized numpy array).
 

@@ -64,14 +64,14 @@ class TestHelpers:
     def test_config_to_json_handles_sourcemap_config(self):
         sourcemap_config = SourcemapConfig.from_inputs(
             sourcemap_name="baw_original",
-            file_metadata={"domain": "https://api.ecosounds.org", "arid": 1234},
+            file_metadata={"domain": "https://api.ecosounds.org", "audio_recording_id": 1234},
         )
         rendered = config_to_json({"sourcemap_config": sourcemap_config})
         parsed = json.loads(rendered)
-        assert parsed["sourcemap_config"]["sourcemap_template"] == "{domain}/audio_recordings/{arid}/original"
+        assert parsed["sourcemap_config"]["sourcemap_template"] == "{domain}/audio_recordings/{audio_recording_id}/original"
         assert parsed["sourcemap_config"]["file_metadata"] == {
             "domain": "https://api.ecosounds.org",
-            "arid": "1234",
+            "audio_recording_id": "1234",
         }
 
 
@@ -221,13 +221,13 @@ class TestLoadConfig:
             output=str(output),
             embed=True,
             sourcemap_name="baw_original",
-            file_metadata='{"domain": "https://api.ecosounds.org", "arid": 1234}',
+            file_metadata='{"domain": "https://api.ecosounds.org", "audio_recording_id": 1234}',
             config_file=None,
         )
 
         config = load_config(None, args)
         assert config["sourcemap_name"] == "baw_original"
-        assert config["file_metadata"] == {"domain": "https://api.ecosounds.org", "arid": 1234}
+        assert config["file_metadata"] == {"domain": "https://api.ecosounds.org", "audio_recording_id": 1234}
         assert isinstance(config["sourcemap_config"], SourcemapConfig)
 
     def test_file_metadata_without_sourcemap_is_allowed(self, io_dirs):
@@ -254,5 +254,5 @@ class TestLoadConfig:
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="Unknown sourcemap name"):
+        with pytest.raises(ValueError, match="Invalid sourcemap_name value"):
             load_config(None, args)

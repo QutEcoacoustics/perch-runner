@@ -13,15 +13,15 @@ from pathlib import Path
 DEFAULT_PATH_TYPE = "flat"
 
 ALLOWED_OUTPUT_TEMPLATE_TOKENS = {
-    "embeddings": frozenset({"parents", "basename", "ext", "embeddings_table_format", "analysis"}),
-    "recognizer": frozenset({"classifier_name", "parents", "basename", "ext", "analysis"}),
-    "classify": frozenset({"parents", "basename", "ext", "analysis"}),
+    "embeddings": frozenset({"parents", "filestem", "ext", "embeddings_table_format", "analysis"}),
+    "recognizer": frozenset({"classifier_name", "parents", "filestem", "ext", "analysis"}),
+    "classify": frozenset({"parents", "filestem", "ext", "analysis"}),
 }
 
 # preset templates for output paths
 OUTPUT_PATH_TYPE_TEMPLATES = {
-    "nested_basename": "{parents}/{basename}{ext}",
-    "flat_basename": "{basename}{ext}",
+    "nested_filestem": "{parents}/{filestem}{ext}",
+    "flat_filestem": "{filestem}{ext}",
     "nested": "{parents}/{analysis}{ext}",
     "flat": "{analysis}{ext}",
 }
@@ -105,7 +105,8 @@ def render_output_relative_path(
     _ensure_relative_safe_path(audio_rel)
 
     parents = "" if audio_rel.parent == Path(".") else audio_rel.parent.as_posix()
-    basename = audio_rel.name
+    # filestem is extensionless so templates like {filestem}{ext} produce myfile.csv
+    filestem = audio_rel.stem
 
     if ext is not None:
         ext = ext if str(ext).startswith(".") else f".{ext}"
@@ -122,7 +123,7 @@ def render_output_relative_path(
     rendered = template
 
     rendered = replace_val("parents", parents)
-    rendered = replace_val("basename", basename)
+    rendered = replace_val("filestem", filestem)
     rendered = replace_val("ext", ext)
     rendered = replace_val("embeddings_table_format", embeddings_table_format)
     rendered = replace_val("analysis", analysis)

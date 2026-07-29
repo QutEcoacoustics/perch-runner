@@ -66,13 +66,13 @@ def test_embed_pipeline_creates_classify_output_csv_with_templated_path(workspac
         "embed": False,
         "classify": True,
         "classify_filetype": "csv",
-        "classify_output_path_template": "{parents}/{basename}/classify_results{ext}",
+        "classify_output_path_template": "{parents}/{filestem}/classify_results{ext}",
         "recognizers": [],
     }
 
     embed.embed(config)
 
-    classify_csv = output / "sub" / "segment.flac" / "classify_results.csv"
+    classify_csv = output / "sub" / "segment" / "classify_results.csv"
     assert classify_csv.exists(), f"Expected classify output CSV at {classify_csv}"
 
     table = pcsv.read_csv(classify_csv)
@@ -96,7 +96,7 @@ class TestRunRecognizersOverDbKoala:
             recognizers=_load_recognizers(),
             recognizer_results_filetype="csv",
             sourcemap=None,
-            output_template="{classifier_name}/{parents}/{basename}/{analysis}{ext}",
+            output_template="{classifier_name}/{parents}/{filestem}/{analysis}{ext}",
         )
 
         csvs = list(output.rglob("*.csv"))
@@ -111,7 +111,7 @@ class TestRunRecognizersOverDbKoala:
             recognizers=_load_recognizers(),
             recognizer_results_filetype="csv",
             sourcemap=None,
-            output_template="{classifier_name}/{parents}/{basename}/{analysis}{ext}",
+            output_template="{classifier_name}/{parents}/{filestem}/{analysis}{ext}",
         )
 
         csvs = list(output.rglob("*.csv"))
@@ -130,7 +130,7 @@ class TestRunRecognizersOverDbKoala:
             recognizers=_load_recognizers(),
             recognizer_results_filetype="csv",
             sourcemap=None,
-            output_template="{classifier_name}/{parents}/{basename}/{analysis}{ext}",
+            output_template="{classifier_name}/{parents}/{filestem}/{analysis}{ext}",
         )
 
         csvs = list(output.rglob("*.csv"))

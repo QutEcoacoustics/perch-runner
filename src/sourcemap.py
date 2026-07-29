@@ -16,18 +16,18 @@ from typing import Any, Callable
 # Matches workbench canonical recording filenames, e.g.
 #   20210428T100000Z_Five-Rivers-Dry-A_909057.flac
 #   20210428T100000+1000_Site-Name_12345.wav
-# Named groups: timestamp, site_name, arid (audio recording id), extension.
+# Named groups: timestamp, site_name, audio_recording_id (audio recording id), extension.
 _CANONICAL_FILENAME_PATTERN = re.compile(
     r'^(?P<timestamp>\d{8}T\d{6}(?:[+-]\d{4,6}|Z))_'  # Timestamp
     r'(?P<site_name>.+)_'                               # Site name (greedy, may contain underscores)
-    r'(?P<arid>\d+)\.'									# Audio recording id
+    r'(?P<audio_recording_id>\d+)\.'									# Audio recording id
     r'(?P<extension>.+)$'                               # Extension (without leading dot)
 )
 
 NAMED_SOURCEMAP_TEMPLATES = {
-    "baw_original": "{domain}/audio_recordings/{arid}/original", 
-    "ecosounds_original": "https://api.ecosounds.org/audio_recordings/{arid}/original",
-    "a2o_original": "https://api.acousticsobservatory.org.au/audio_recordings/{arid}/original",
+    "baw_original": "{domain}/audio_recordings/{audio_recording_id}/original", 
+    "ecosounds_original": "https://api.ecosounds.org/audio_recordings/{audio_recording_id}/original",
+    "a2o_original": "https://api.acousticsobservatory.org.au/audio_recordings/{audio_recording_id}/original",
 }
 
 # patterns for extracting metadata from filenames. 
@@ -35,7 +35,7 @@ NAMED_METADATA_PATTERNS = {
     "canonical_filename": _CANONICAL_FILENAME_PATTERN,
 }
 
-# extracting tokens in curly braces from templates, e.g. {arid}
+# extracting tokens in curly braces from templates, e.g. {audio_recording_id}
 _TOKEN_PATTERN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -147,7 +147,7 @@ class SourcemapConfig:
     # a regex pattern string to extract additional metadata from the input filename
     file_metadata_pattern: re.Pattern[str] | None = None
 
-    # a template to replace any 'source' column with string templated by file metadata (e.g. arid)
+    # a template to replace any 'source' column with string templated by file metadata (e.g. audio_recording_id)
     sourcemap_template: str | None = None
     
 
@@ -231,8 +231,8 @@ class SourcemapConfig:
         resolved_tokens = dict(self.file_metadata)
 
         if self.file_metadata_pattern is not None:
-            basename = Path(filename).name
-            match = self.file_metadata_pattern.search(basename)
+            filestem = Path(filename).name
+            match = self.file_metadata_pattern.search(filestem)
             if match is not None:
                 for key, value in match.groupdict().items():
                     if value is not None:

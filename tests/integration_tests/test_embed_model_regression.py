@@ -34,7 +34,7 @@ def test_perch8_columns_regression(workspace):
         output_path=str(output / "embeddings"),
         table_format="columns",
         filetype="parquet",
-        output_template="{parents}/{basename}/{analysis}{ext}",
+        output_template="{parents}/{filestem}/{analysis}{ext}",
     )
 
     parquet_files = list((output / "embeddings").rglob("*.parquet"))

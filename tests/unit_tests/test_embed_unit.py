@@ -24,7 +24,7 @@ def _base_config(tmp_path, **overrides):
         "embed": True,
         "embeddings_table_format": "serialized",
         "embeddings_table_filetype": "parquet",
-        "embeddings_output_path_template": "{parents}/{basename}/{analysis}{ext}",
+        "embeddings_output_path_template": "{parents}/{filestem}/{analysis}{ext}",
         "save_db": False,
         "recognizers": [],
         "recognizer_results_filetype": "csv",
@@ -50,7 +50,7 @@ class TestEmbedPipeline:
         _, kwargs = mock_export.call_args
         assert kwargs["table_format"] == "serialized"
         assert kwargs["filetype"] == "parquet"
-        assert kwargs["output_template"] == "{parents}/{basename}/{analysis}{ext}"
+        assert kwargs["output_template"] == "{parents}/{filestem}/{analysis}{ext}"
 
     def test_recognizer_export_called_when_present(self, tmp_path):
         config = _base_config(tmp_path, recognizers=[object()])
@@ -99,7 +99,7 @@ class TestEmbedPipeline:
             tmp_path,
             sourcemap_config=SourcemapConfig.from_inputs(
                 sourcemap_name="ecosounds_original",
-                file_metadata={"arid": 909057},
+                file_metadata={"audio_recording_id": 909057},
             ),
         )
 
@@ -120,7 +120,7 @@ class TestEmbedPipeline:
             recognizers=[object()],
             sourcemap_config=SourcemapConfig.from_inputs(
                 sourcemap_name="ecosounds_original",
-                file_metadata={"arid": 909057},
+                file_metadata={"audio_recording_id": 909057},
             ),
         )
 
