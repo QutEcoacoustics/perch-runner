@@ -55,7 +55,7 @@ docker run --rm \
 | `--sourcemap_name` | Optional sourcemap preset used to rewrite the output `source` value | None |
 | `--file_metadata` | Optional JSON object of token values used to fill sourcemap template placeholders | None |
 | `--sourcemap_template` | Optional sourcemap destination template, e.g. `https://.../audio_recordings/{audio_recording_id}/original` | None |
-| `--file_metadata_pattern` | Optional regex (or preset name) used to extract named token values from filestem | None |
+| `--file_metadata_pattern` | Optional regex (or preset name) used to extract named token values from basename (including extension) | None |
 | `--save_db` | Persist the hoplite embedding database. Use --save_db with no value to enable (default: false) | `false` |
 | `--file_glob` | Glob pattern for audio files, e.g. `*/*`, `*/*/*` | Auto-detected |
 | `--workers` | Worker count or `auto` | `auto` |
@@ -220,10 +220,12 @@ Examples:
 
 #### --file_metadata_pattern
 
-Optional pattern used to extract named token values from each filestem.
+Optional pattern used to extract named token values from each basename (including extension).
 
 - Can be a raw regex with named groups, e.g. `(?P<audio_recording_id>\d+)`.
 - Can also be the preset name `canonical_filename`.
+  - Intended for canonical filenames like `20210428T100000Z_Five-Rivers-Dry-A_909057.flac`.
+  - Extracts named groups: `timestamp`, `site_name`, `audio_recording_id`, `extension`.
 - If a required token cannot be resolved for a file, sourcemap rendering raises an error.
 
 #### --file_metadata
