@@ -197,6 +197,11 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                 if class_name.casefold() in self.perch_species_filter
             }
             self.perch_allowed_class_indices = sorted(allowed_indices)
+
+        # magic tranformation to correct logits to be closer to a 0 decision boundary.
+        # Tom suggested this
+        #self.logit_transform = lambda x: x * 0.97 - 10
+        self.logit_transform = lambda x: x * 0.97 - 9
         
 
 
@@ -277,6 +282,7 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                             for i, s in enumerate(sources):
                                 window_id = f"{s.file_id}_{offsets[i][0]}"
                                 window_logits = logts[i]
+                                window_logits = self.logit_transform(window_logits)
                                 if not self._validated_logits_shape:
                                     _validate_class_name_mapping(self.class_names, int(window_logits.shape[-1]))
                                     self._validated_logits_shape = True

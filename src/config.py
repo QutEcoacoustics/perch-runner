@@ -7,6 +7,7 @@ templating settings.
 """
 
 import json
+import logging
 import re
 import warnings
 import yaml
@@ -22,10 +23,12 @@ from src.recognizer_utils import (
     resolve_model_choice_for_recognizers,
     validate_recognizers,
 )
+from src.species_list_translator import SPECIES_LIST_PRESETS, translate_species_list_for_model
 from src.sourcemap import get_sourcemap_preset_names
 from src.sourcemap import SourcemapConfig
 
 default_config_dir = "/mnt/config/"
+log = logging.getLogger(__name__)
 
 
 # any config keys that can be validated against an allow-list of values. 
@@ -44,28 +47,31 @@ valid_values = {
     "output_path_type": ["flat_filestem", "nested_filestem", "nested", "flat"],
     "save_db": [True, False],
     "sourcemap_name": get_sourcemap_preset_names(),
+    "classify_require_species_list": [True, False],
 }
 
 
-# Here are all the config options, their default values, and a short description (which is used in the CLI help)
-# False are actual values that mean "disabled"
-# None means that a default will be applied, but it's more complicated than just a single default value here. 
+# Here are all the config options: a tuple of (default_value, description) Description (which is used in the CLI help)
+# None is either 
+# a) feature disabled if not provided, or 
+# b) there is default but there is some logic that determines the value based on other config. 
+#    This is the case for output path templating, due to the hierarchy of output_path_type, <analysis>_output_path_type, and <analysis>_output_path_template.
 all_config_options = {
     "source": ("/mnt/input", "path to the source audio folder"),
     "output": ("/mnt/output", "path to the output folder"),
 
     "model_choice": ("perch_v2", "model to use, e.g. perch_v2"),
     "save_db": (False, "save the hoplite database after processing. Use --save_db with no value to enable (default: false)"),
-    "file_glob": (None, "glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if not specified."),
+    "file_glob": (False, "glob pattern for audio files, e.g. '*/*', '*/*/*'. Auto-detected if falsey."),
     "dataset_name": ("search_set", "dataset name used in runner configuration"),
     "workers": ("auto", "number of worker threads for embedding, or 'auto' (default) to choose based on available RAM."),
     "db_path": ("db", "database output path. Relative paths are resolved under --output (default: db)"),
     "sourcemap_name": (None, "optional sourcemap preset name used for source remapping"),
-    "file_metadata": (None, "optional JSON object/dict of template token values used for sourcemap rendering"),
+    "file_metadata": ({}, "optional JSON object/dict of template token values used for sourcemap rendering, or audio-recording-id column"),
     "sourcemap_template": (None, "optional sourcemap destination template, e.g. https://.../{audio_recording_id}/original"),
     "file_metadata_pattern": (None, "optional sourcemap pattern preset name or regex used to extract named tokens from filename"),
 
-    "embed": (None, "enable embedding export (boolean flag). Use --embeddings_table_format and --embeddings_table_filetype to control output format."),
+    "embed": (False, "enable embedding export (boolean flag). Use --embeddings_table_format and --embeddings_table_filetype to control output format."),
     "embeddings_table_format": ("serialized", "table format for embeddings, e.g. serialized, columns"),
     "embeddings_table_filetype": ("parquet", "file format for the embedding table"),
     "embeddings_output_path_template": (None, "custom output path template for embeddings files. Supported tokens: {parents}, {filestem}, {ext}, {embeddings_table_format}, {analysis}."),
@@ -81,6 +87,7 @@ all_config_options = {
     "classify_species_list": (None, "path to the species list for classification"),
     "perch_species_list": (None, "species filter for perch classify detections. Accepts comma/newline separated values, a text-file path, or a list."),
     "perch_max_detections_per_window": (10, "maximum number of classify detections to keep per window"),
+    "classify_require_species_list": (False, "If True, a species list must be supplied for classification."),
     "classify_output_path_template": (None, "custom output path template for classification files"),
     "classify_output_path_type": (None, "preset output path type for classification files"),
 
@@ -97,7 +104,7 @@ default_config = {k: v[0] for k, v in all_config_options.items()}
 
 
 
-_FALSY_STRINGS = frozenset({"none", "false", "null", ""})
+_FALSY_STRINGS = frozenset({"none", "false", "null"})
 _TRUTHY_STRINGS = frozenset({"true"})
 
 
@@ -142,6 +149,7 @@ def normalize_bool_string(explicit_config, key):
             explicit_config[key] =  False
         if lower in _TRUTHY_STRINGS:
             explicit_config[key] =  True
+        
 
 
 
@@ -231,28 +239,51 @@ def parse_species_list_values(values):
     return parsed
 
 
-def normalize_perch_species_list(value, *, config_file_dir: Path | None = None):
+def normalize_perch_species_list(config, config_file_dir: Path | None = None):
     """Normalize perch species list value from inline text, list, or text file."""
-    if value is None:
-        return None
+
+    # anything False, "false", 'none' etc should convert to None, meaning no list
+    # this converts those falsey strings to False, and then we convert back to None
+    normalize_bool_string(config, "perch_species_list")
+    if config.get("perch_species_list") == False or config["perch_species_list"] is None:
+        config["perch_species_list"] = None
+        return
+
+    value = config["perch_species_list"]
 
     if isinstance(value, (list, tuple, set)):
-        return parse_species_list_values(value)
+        config["perch_species_list"] = parse_species_list_values(value)
+        return
+
+
 
     if isinstance(value, str):
-        stripped = value.strip()
-        if stripped.lower() in _FALSY_STRINGS:
-            return None
 
-        candidate_path = Path(stripped)
+        # Existing file path (absolute or relative to config file dir)
+        candidate_path = Path(value)
         if not candidate_path.is_absolute() and config_file_dir is not None:
             candidate_path = config_file_dir / candidate_path
 
         if candidate_path.exists() and candidate_path.is_file():
             file_content = candidate_path.read_text(encoding="utf-8")
-            return parse_species_list_values(file_content)
+            config["perch_species_list"] = parse_species_list_values(file_content)
+            return
 
-        return parse_species_list_values(stripped)
+        # Preset key lookup
+        preset_path_str = SPECIES_LIST_PRESETS.get(value)
+        if preset_path_str is not None:
+            preset_path = Path(preset_path_str)
+            if not preset_path.exists() or not preset_path.is_file():
+                raise FileNotFoundError(
+                    f"perch_species_list preset '{value}' points to missing file: {preset_path}"
+                )
+            file_content = preset_path.read_text(encoding="utf-8")
+            config["perch_species_list"] = parse_species_list_values(file_content)
+            return
+
+        # Any other string is treated as inline species list values (comma/newline separated)
+        config["perch_species_list"] = parse_species_list_values(value)
+        return
 
     raise ValueError("perch_species_list must be a string, list, or path to a text file")
 
@@ -321,13 +352,13 @@ def validate_embedding_config(explicit_config):
     # embeddings_output_path stuff is validated elsewhere
 
 
-def validate_recognizer_config(explicit_config, config_file):
+def validate_recognizer_config(explicit_config, config_dir):
     """ validate all the recognizer-related config values, including recognizers, recognizer_output_path_template, recognizer_output_path_type, and recognizer_results_filetype. """
 
 
     explicit_config["recognizers"] = build_classifier_config_list(
         explicit_config.get("recognizers"),
-        config_dir=(config_file.parent if config_file is not None else Path(default_config_dir)),
+        config_dir=config_dir,
     )
 
     validate_single_value(explicit_config, 'recognizer_results_filetype')
@@ -358,10 +389,11 @@ def validate_recognizer_config(explicit_config, config_file):
  
 
 
-def validate_classify_config(explicit_config, config_file):
+def validate_classify_config(explicit_config):
     """ validate all the classify-related config values, including classify and classify_filetype. """
 
     normalize_bool_string(explicit_config, 'classify')
+    normalize_bool_string(explicit_config, 'classify_require_species_list')
 
     classify_related_keys = [
         "classify_filetype",
@@ -369,7 +401,8 @@ def validate_classify_config(explicit_config, config_file):
         "perch_species_list",
         "perch_max_detections_per_window",
         "classify_output_path_template",
-        "classify_output_path_type"
+        "classify_output_path_type",
+        "classify_require_species_list",
     ]
 
     if any(explicit_config.get(key, False) for key in classify_related_keys):
@@ -383,17 +416,9 @@ def validate_classify_config(explicit_config, config_file):
             explicit_config['classify'] = True
 
     validate_single_value(explicit_config, "classify")
+    validate_single_value(explicit_config, "classify_require_species_list")
 
     validate_single_value(explicit_config, "classify_filetype")
-
-    config_file_dir = config_file.parent if config_file is not None else Path(default_config_dir)
-    if "perch_species_list" in explicit_config:
-        explicit_config["perch_species_list"] = normalize_perch_species_list(
-            explicit_config.get("perch_species_list"),
-            config_file_dir=config_file_dir,
-        )
-        if explicit_config["perch_species_list"] == []:
-            raise ValueError("perch_species_list must contain at least one species when provided")
 
     if "perch_max_detections_per_window" in explicit_config:
         raw_value = explicit_config["perch_max_detections_per_window"]
@@ -404,6 +429,7 @@ def validate_classify_config(explicit_config, config_file):
         if parsed_value <= 0:
             raise ValueError("perch_max_detections_per_window must be > 0")
         explicit_config["perch_max_detections_per_window"] = parsed_value
+
 
 
 def validate_sourcemap_config(explicit_config):
@@ -433,10 +459,32 @@ def validate_sourcemap_config(explicit_config):
         file_metadata_pattern=explicit_config.get("file_metadata_pattern"),
     )
 
+def validate_species_list_config(config, config_file_dir: Path | None = None):
+    """Validate and normalize species list config values."""
 
-def load_config(config_path=None, args=None):
+    if not config["classify"]:
+        # not sure but probably safe to just ignore all this if we are not doing perch global classify
+        return
+
+    # converts all valid species list formats into either None or a list of species strings.
+    normalize_perch_species_list(config,config_file_dir=config_file_dir)
+    if config["perch_species_list"] == []:
+        raise ValueError("perch_species_list must contain at least one species when provided")
+    if not config["perch_species_list"] and config["classify_require_species_list"]:
+        raise ValueError("perch_species_list must be provided.")
+
+    # TODO: finish the species list translation stuff. 
+    # until then, species lists must be in the format used by the model. 
+    # if config.get("classify") and config.get("perch_species_list"):
+    #     config["perch_species_list"] = translate_species_list_for_model(
+    #         config["perch_species_list"],
+    #         config["model_choice"],
+    #     )
+
+
+def load_config_file(config_path) -> tuple[dict, Path | None]:
     """
-    attemps to load a config file, either from the specified path or from the default config directory. 
+    loads a config from a file if one was supplied
     """
     if config_path is not None:
         config_file = Path(config_path)
@@ -444,7 +492,6 @@ def load_config(config_path=None, args=None):
             raise FileNotFoundError(f"Specified config file {config_file} does not exist.")
     else:
         config_file = find_config()
-
 
     if config_file is not None:
         # open and parse yaml or json config file
@@ -460,7 +507,10 @@ def load_config(config_path=None, args=None):
         print("No config file found. Using default configuration.")
         config = {}
     file_config = dict(config)
+    return file_config, config_file
 
+
+def merge_explicit_config(file_config, args):
     # merge with command line args, giving precedence to command line args
     args_dict = {}
     if args is not None:
@@ -474,12 +524,27 @@ def load_config(config_path=None, args=None):
         if key not in default_config:
             raise ValueError(f"Invalid config key: {key}. Allowed keys are: {list(default_config.keys())}")
 
-    validate_embedding_config(explicit_config)
-    validate_recognizer_config(explicit_config, config_file)
-    validate_classify_config(explicit_config, config_file)
-    validate_sourcemap_config(explicit_config)
+    return explicit_config
 
-    
+
+def load_config(config_path=None, args=None):
+    """
+    attemps to load a config file, either from the specified path or from the default config directory. 
+    """
+
+    file_config, config_file = load_config_file(config_path)
+
+    # explicit config contains all user-supplied config values. 
+    explicit_config = merge_explicit_config(file_config, args)
+
+    config_dir = config_file.parent if config_file is not None else Path(default_config_dir)
+
+    # This first stage of validation is to ensure that the config values are consistent and valid, but not to merge them with defaults yet.
+
+    validate_embedding_config(explicit_config)
+    validate_recognizer_config(explicit_config, config_dir)
+    validate_classify_config(explicit_config)
+    validate_sourcemap_config(explicit_config)
     normalize_bool_string(explicit_config, 'save_db')
     validate_single_value(explicit_config,"save_db")
 
@@ -494,6 +559,8 @@ def load_config(config_path=None, args=None):
     if not config['embed'] and not config['classify'] and not config['save_db'] and not config['recognizers']:
         raise ValueError("At least one of --embed, --classify, --save_db or --recognizers must be specified.")
 
+
+    validate_species_list_config(config, config_file_dir=config_dir)
 
     validate_and_resolve_template_config(config)
 
@@ -539,6 +606,8 @@ def load_config(config_path=None, args=None):
     config['output'] = Path(config['output'])
     if not config['output'].exists():
         raise FileNotFoundError(f"Output path {config['output']} does not exist.")
+
+    log.info("Resolved config: %s", config_to_json(config, sort_keys=True))
 
     return config
   

@@ -306,30 +306,36 @@ Logging controls.
 
 ## Examples
 
-### Single file, recognizer output, BAW sourcemap, add audio_recording_id column
+### Single file, recognizer output AND classify output, BAW sourcemap, add audio_recording_id column
 
 ```bash
 docker run --rm \
-  -v /path/to/audio_file.wav:/mnt/input/audio_file.wav \
-  -v /path/to/recognizers.json:/mnt/config/recognizers.json \
+  -v $(pwd)/tests/files/audio/gympie_np_1192_333354_20151010_152034_30_0.wav:/mnt/input/audio_file.wav \
+  -v $(pwd)/tests/files/configs/koala.json:/mnt/config/recognizers.json \
   -v /path/to/output:/mnt/output \
   qutecoacoustics/perchrunner:latest analyze \
   --source /mnt/input/audio_file.wav \
   --recognizers /mnt/config/recognizers.json \
   --sourcemap_name baw_original \
-  --file_metadata '{"domain":"https://api.acousticsobservatory.org.au","audio_recording_id":"1234"}'
+  --file_metadata '{"domain":"https://api.acousticsobservatory.org.au","audio_recording_id":"1234"}' \
+  --classify
 ```
 
 Notes:
 
-- `audio_recording_id` is currently requested by runner for extra-column injection in recognizer/classify exports.
-- Replace `1234` and `domain` with your real values.
+- `audio_recording_id` is added to classify/recognizer results if it's supplied (like in this example)
+-  We don't specify a perch version. Because this example recognizer has a model config indicating perch_8, that is what is used
+- This particular example provides --recognizers AND --classify, therefore it will save a results file for the koala recognizer and the perch global recognizer. 
+- the perch global recognizer will use perch_8 as well. You can't ask for different embedding models for different outputs. 
+
+
+
 
 ### Single file, Perch classify output
 
 ```bash
 docker run --rm \
-  -v /path/to/audio_file.wav:/mnt/input/audio_file.wav \
+  -v $(pwd)/tests/files/audio/gympie_np_1192_333354_20151010_152034_30_0.wav:/mnt/input/audio_file.wav \
   -v /path/to/output:/mnt/output \
   qutecoacoustics/perchrunner:latest analyze \
   --source /mnt/input/audio_file.wav \
@@ -340,7 +346,9 @@ docker run --rm \
 
 Notes:
 
-- `--save_db` is included to ensure the embed pipeline path runs, which is where classify export currently happens.
+- `--save_db` means that the perch-hoplite database won't be removed at the end
+- we don't specify `--embedding_model`, so it will default to perch_v2
+- `--classify` is specified, so we expect a csv of perch_v2 classification results
 
 ### Single file, embeddings parquet flat to embeddings.parquet, BAW sourcemap
 

@@ -65,6 +65,7 @@ def test_embed_pipeline_creates_classify_output_csv_with_templated_path(workspac
         "dataset_name": "search_set",
         "embed": False,
         "classify": True,
+        "logit_threshold": -10.0,  # force some classify rows to be produced, this was added after we added the logit transform
         "classify_filetype": "csv",
         "classify_output_path_template": "{parents}/{filestem}/classify_results{ext}",
         "recognizers": [],
