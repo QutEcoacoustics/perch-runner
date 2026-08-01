@@ -42,6 +42,10 @@ docker run --rm \
 | `--embeddings_output_path_type` | Preset output layout for embeddings: `flat_filestem`, `nested_filestem`, `nested`, `flat` | `flat` |
 | `--classify` | Enable Perch global classification output (boolean flag). Use `--classify` with no value to enable | `false` |
 | `--classify_filetype` | File format for classification output: `parquet` or `csv` | `csv` |
+| `--classify_species_list` | Legacy classify species-list path option (currently not used by Perch global classify output) | None |
+| `--perch_species_list` | Species filter for Perch classify output. Accepts comma/newline text, list values, or a text-file path | None |
+| `--perch_max_detections_per_window` | Maximum number of classify detections kept per window | `10` |
+| `--classify_require_species_list` | Require `perch_species_list` when classify is enabled | `false` |
 | `--classify_output_path_template` | Output path template for classification files | `{analysis}{ext}` |
 | `--classify_output_path_type` | Preset output layout for classification files: `flat_filestem`, `nested_filestem`, `nested`, `flat` | `flat` |
 | `--recognizers` | Path to a recognizers JSON file. Runs embeddings through linear classifiers and writes per-recognizer result files | None |
@@ -267,7 +271,51 @@ Enable Perch classify output.
 - Use `--classify` or `--classify true` to enable.
 - Use `--classify false` to explicitly disable.
 - File format is controlled by `--classify_filetype` (`csv` or `parquet`).
+- If `--perch_species_list` is provided, classify rows are filtered to that species set.
 - Current app behavior: classify export runs in the embedding pipeline path, so in practice you must also set at least one of `--embed`, `--save_db`, or `--recognizers`.
+
+#### --perch_species_list
+
+Model-specific species filter for Perch global classify output.
+
+- Supported input forms:
+  - Comma/newline-separated inline string (for example: `"koala, emu"`).
+  - Repeated/list values from config files.
+  - Path to a text file (one or many species entries, comma/newline-separated).
+  - Preset key (currently: `australian_birds_01`).
+- Resolution rules:
+  - If the value is a path to an existing file, that file is loaded.
+  - For relative paths from config files, resolution is relative to the config file directory.
+  - Otherwise the value is treated as inline species text.
+- Validation rules:
+  - Entries are validated against the model-specific final label set used by classify export:
+    - `src/species_lists/perch_8.txt`
+    - `src/species_lists/perch_v2.txt`
+  - Matching is case-insensitive.
+  - Accepted values are canonicalized to the exact label text from those files.
+  - Duplicate species are removed after canonicalization.
+  - Invalid entries raise an error before processing starts.
+  - Empty lists are rejected.
+
+#### --classify_require_species_list
+
+When set to true, classify mode requires `--perch_species_list`.
+
+- If classify is enabled and no species list is provided, config loading raises an error.
+
+#### --perch_max_detections_per_window
+
+Limits classify output density per audio window.
+
+- Must be an integer greater than 0.
+- Defaults to `10`.
+- After thresholding/species filtering, only the top N detections per window are kept.
+
+#### --classify_species_list
+
+Legacy option currently retained for compatibility.
+
+- It is accepted by config parsing, but is not used by the current Perch global classify export path.
 
 #### --model_choice
 
@@ -414,6 +462,21 @@ docker run --rm \
 | `perch_8` | 1280 | Google Perch v8 |
 
 Models are cached in the Docker image at build time — no internet access is required at runtime.
+
+### Regenerating model species lists
+
+Use the helper script to regenerate the model-aligned species label files under `src/species_lists`:
+
+```bash
+# regenerate both default models
+python -m src.generate_species_lists
+
+# regenerate one model
+python -m src.generate_species_lists --models perch_8
+
+# custom output directory
+python -m src.generate_species_lists --output-dir src/species_lists
+```
 
 ## Building
 

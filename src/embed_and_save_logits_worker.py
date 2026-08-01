@@ -47,10 +47,20 @@ def _load_ebird2021_code_to_scientific_name():
     }
 
 
+def _load_ebird2021_label_to_species_code():
+    """Return ebird2021 label -> species-level eBird code mapping."""
+    db = namespace_db.load_db()
+    ebird_to_species = db.mappings.get('ebird2021_to_species')
+    if ebird_to_species is None:
+        return {}
+    return {str(k): str(v) for k, v in ebird_to_species.mapped_pairs.items()}
+
+
 def resolve_species_class_names(
     class_list,
     model_choice,
     ebird_code_to_name=None,
+    ebird_label_to_species_code=None,
 ):
     """Resolve logits-aligned species names for either perch_8 or perch_v2.
 
@@ -64,10 +74,18 @@ def resolve_species_class_names(
 
     if ebird_code_to_name is None:
         ebird_code_to_name = _load_ebird2021_code_to_scientific_name()
-    if not ebird_code_to_name:
+    if ebird_label_to_species_code is None:
+        ebird_label_to_species_code = _load_ebird2021_label_to_species_code()
+    if not ebird_code_to_name and not ebird_label_to_species_code:
         return species_codes
 
-    return [ebird_code_to_name.get(code, code) for code in species_codes]
+    resolved = []
+    for code in species_codes:
+        species_code = ebird_label_to_species_code.get(code, code)
+        resolved.append(
+            ebird_code_to_name.get(species_code) or ebird_code_to_name.get(code) or species_code
+        )
+    return resolved
 
 
 def resolve_species_class_names_for_model_choice(model_choice, ebird_code_to_name=None):

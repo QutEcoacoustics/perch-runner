@@ -74,6 +74,27 @@ def test_resolve_species_class_names_for_perch_8_prefers_label_key():
     assert got == ["Abyssinian Catbird", "Acadian Flycatcher"]
 
 
+def test_resolve_species_class_names_for_perch_8_normalizes_ebird2021_labels_first():
+    class_list = {
+        "label": _ClassNames(["bkfqua1", "bkhcan1"]),
+    }
+
+    got = resolve_species_class_names(
+        class_list=class_list,
+        model_choice="perch_8",
+        ebird_code_to_name={
+            "quailf1": "ortygospiza atricollis",
+            "bkhcan2": "serinus alario",
+        },
+        ebird_label_to_species_code={
+            "bkfqua1": "quailf1",
+            "bkhcan1": "bkhcan2",
+        },
+    )
+
+    assert got == ["ortygospiza atricollis", "serinus alario"]
+
+
 def test_resolve_species_class_names_for_perch_v2_uses_labels_key():
     class_list = {
         "labels": _ClassNames(["species_x", "species_y", "species_z"]),

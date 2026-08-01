@@ -23,7 +23,7 @@ from src.recognizer_utils import (
     resolve_model_choice_for_recognizers,
     validate_recognizers,
 )
-from src.species_list_translator import SPECIES_LIST_PRESETS, translate_species_list_for_model
+from src.perch_species_validation import SPECIES_LIST_PRESETS, validate_perch_species_list_entries
 from src.sourcemap import get_sourcemap_preset_names
 from src.sourcemap import SourcemapConfig
 
@@ -473,13 +473,7 @@ def validate_species_list_config(config, config_file_dir: Path | None = None):
     if not config["perch_species_list"] and config["classify_require_species_list"]:
         raise ValueError("perch_species_list must be provided.")
 
-    # TODO: finish the species list translation stuff. 
-    # until then, species lists must be in the format used by the model. 
-    # if config.get("classify") and config.get("perch_species_list"):
-    #     config["perch_species_list"] = translate_species_list_for_model(
-    #         config["perch_species_list"],
-    #         config["model_choice"],
-    #     )
+    validate_perch_species_list_entries(config)
 
 
 def load_config_file(config_path) -> tuple[dict, Path | None]:
