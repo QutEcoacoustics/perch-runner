@@ -16,7 +16,7 @@ from src.version import MODELS
 from .embed_helpers import A2O_FLAC, FIXTURE_DBS
 
 
-NESTED_TEMPLATE = "{parents}/{basename}/{analysis}{ext}"
+NESTED_TEMPLATE = "{parents}/{filestem}/{analysis}{ext}"
 
 
 def test_empty_db_logs_warning_returns_early(workspace, caplog):
@@ -162,7 +162,7 @@ def test_export_columns_all_models(model_choice, tmp_path):
 
 def test_export_both_formats_by_two_calls(tmp_path):
     output = tmp_path / "embeddings"
-    template = "{embeddings_table_format}/{parents}/{basename}/{analysis}{ext}"
+    template = "{embeddings_table_format}/{parents}/{filestem}/{analysis}{ext}"
 
     export_embeddings_table(
         db_path="tests/files/hoplite_perch_v2",
@@ -179,8 +179,8 @@ def test_export_both_formats_by_two_calls(tmp_path):
         output_template=template,
     )
 
-    ser_path = output / "serialized" / "one" / "100sec.wav" / "embeddings.parquet"
-    col_path = output / "columns" / "one" / "100sec.wav" / "embeddings.parquet"
+    ser_path = output / "serialized" / "one" / "100sec" / "embeddings.parquet"
+    col_path = output / "columns" / "one" / "100sec" / "embeddings.parquet"
     assert ser_path.exists()
     assert col_path.exists()
 
@@ -196,5 +196,5 @@ def test_a2o_flac_export_parquet(tmp_path):
         output_template=NESTED_TEMPLATE,
     )
 
-    parquet_path = output / f"Minjerribah-Dry-B/{A2O_FLAC}" / "embeddings.parquet"
+    parquet_path = output / f"Minjerribah-Dry-B/{Path(A2O_FLAC).stem}" / "embeddings.parquet"
     assert parquet_path.exists()

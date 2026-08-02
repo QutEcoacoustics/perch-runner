@@ -10,7 +10,7 @@ Things like
 - loading the database
 - grouping windows by source
 - building a DataFrame for each source
-- resolving the output path for each source (which might be shared by multiple sources if the output template does not include {basename})
+- resolving the output path for each source (which might be shared by multiple sources if the output template does not include {filestem})
 - appending output to in-progress files
 - cleaning up in-progress files by deduping, sorting, and renaming to final output
 are all shared between the two operations.
@@ -24,12 +24,15 @@ which internally refers to them as "classifiers". So in this code there are refe
 
 import logging
 from pathlib import Path
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from perch_hoplite.db import sqlite_usearch_impl
+
 
 from src import data_frames
 
@@ -74,6 +77,16 @@ def _load_db_and_group_windows(db_path: str | Path):
     return db, data_by_source
 
 
+def _load_recording_id_to_source(db_path: str | Path) -> dict[str, str]:
+    """Load a hoplite DB and build recording_id -> source filename mapping."""
+    db_path = Path(db_path)
+    db = sqlite_usearch_impl.SQLiteUSearchDB.create(str(db_path))
+    recordings = db.get_all_recordings()
+    # Normalize keys to strings because staged classify parquet may store IDs as
+    # either integer or string depending on writer behavior.
+    return {str(r.id): r.filename for r in recordings}
+
+
 def _resolve_output_destination(
     output_template: str,
     source: str,
@@ -82,6 +95,7 @@ def _resolve_output_destination(
     embeddings_table_format: str | None = None,
     filetype: str | None = None,
     recognizer_name: str | None = None,
+    template_type: str = "embeddings",
 ) -> Path:
     """Render and validate output destination for one source item.
 
@@ -106,8 +120,138 @@ def _resolve_output_destination(
         ext=ext,
         embeddings_table_format=embeddings_table_format,
         recognizer_name=recognizer_name,
+        template_type=template_type,
     )
     return ensure_output_path_within_root(rel_path, output_path)
+
+
+def export_classify_table(
+    staging_path: str | Path,
+    db_path: str | Path,
+    output_path: str | Path,
+    filetype: str,
+    output_template: str,
+    sourcemap: Callable[[str], str] | None = None,
+    parquet_metadata: dict[str, str] | None = None,
+    extra_columns: Callable[[str], dict[str, Any]] | None = None
+):
+    """Export staged base-model classify rows to templated output files."""
+    if sourcemap is None:
+        sourcemap = lambda x: x
+
+    staging_path = Path(staging_path)
+    if not staging_path.exists():
+        log.warning("No staged classify rows found at %s - nothing to export.", staging_path)
+        return
+
+    output_path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    df = pd.read_parquet(staging_path)
+    if df.empty:
+        log.info("Staged classify rows are empty - nothing to export.")
+        staging_path.unlink(missing_ok=True)
+        return
+
+    required_cols = {"recording_id", "offset_s", "species", "score"}
+    missing_cols = sorted(required_cols - set(df.columns))
+    if missing_cols:
+        raise ValueError(
+            f"Staged classify parquet is missing required columns: {missing_cols}"
+        )
+
+    recording_id_to_source = _load_recording_id_to_source(db_path)
+    recording_id_series = df["recording_id"]
+    recording_id_series_str = recording_id_series.astype(str)
+    recording_ids = sorted(recording_id_series.loc[recording_id_series.notna()].astype(str).unique().tolist())
+
+    missing_recording_ids = [rid for rid in recording_ids if rid not in recording_id_to_source]
+    if missing_recording_ids:
+        raise ValueError(
+            "Staged classify parquet contains recording_id values that are missing from the hoplite DB: "
+            f"{missing_recording_ids}"
+        )
+
+    source_keys = sorted({recording_id_to_source[rid] for rid in recording_ids})
+    data_by_source = {source: [] for source in source_keys}
+    source_to_mapped_source = _build_and_validate_sourcemap_sources(data_by_source, sourcemap)
+    extra_cols_by_source, extra_column_names = _resolve_extra_columns_by_source(source_keys, extra_columns)
+
+    recording_id_to_mapped_source = {
+        rid: source_to_mapped_source[recording_id_to_source[rid]]
+        for rid in recording_ids
+    }
+
+    dest_paths_map = {
+        source: _resolve_output_destination(
+            output_template=output_template,
+            source=source,
+            analysis="classify_results",
+            output_path=output_path,
+            filetype=filetype,
+            template_type="classify",
+        )
+        for source in source_keys
+    }
+
+    dest_paths_set = set(dest_paths_map.values())
+    for dest in dest_paths_set:
+        dest_inprogress = dest.with_suffix(dest.suffix + ".inprogress")
+        if dest_inprogress.exists():
+            dest_inprogress.unlink()
+            log.info("Removed stale in-progress file %s", dest_inprogress)
+
+    inprogress_paths: set[Path] = set()
+    parquet_writers: dict[Path, pq.ParquetWriter] = {}
+
+    try:
+        for i, recording_id in enumerate(recording_ids, 1):
+            source = recording_id_to_source[recording_id]
+            source_rows = df[recording_id_series_str == recording_id].copy()
+            if source_rows.empty:
+                continue
+
+            source_rows = source_rows.rename(columns={"offset_s": "offset", "species": "label"})
+            source_rows["source"] = recording_id_to_mapped_source[recording_id]
+            source_rows["channel"] = 0
+            source_rows = source_rows[["source", "channel", "offset", "label", "score"]]
+            source_rows = _apply_extra_columns(
+                source_rows,
+                extra_cols_by_source[source],
+                extra_column_names,
+            )
+
+            dest = dest_paths_map[source]
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest_inprogress = dest.with_suffix(dest.suffix + ".inprogress")
+
+            if filetype == "parquet":
+                write_inprogress_parquet(dest_inprogress, source_rows, parquet_writers)
+            elif filetype == "csv":
+                write_inprogress_csv(dest_inprogress, source_rows)
+            else:
+                raise ValueError(f"Unsupported filetype: {filetype}")
+
+            inprogress_paths.add(dest_inprogress)
+            log.info(
+                "  [%d/%d] Wrote classify rows for %s (%d row(s))",
+                i,
+                len(recording_ids),
+                source,
+                len(source_rows),
+            )
+    finally:
+        for writer in parquet_writers.values():
+            writer.close()
+
+    for inprogress_path in inprogress_paths:
+        finalize_inprogress_file(
+            inprogress_path,
+            filetype,
+            parquet_metadata=parquet_metadata,
+        )
+
+    staging_path.unlink(missing_ok=True)
 
 
 def _build_and_validate_sourcemap_sources(
@@ -142,6 +286,49 @@ def _build_and_validate_sourcemap_sources(
         )
 
     return source_to_mapped_source
+
+
+def _resolve_extra_columns_by_source(
+    sources: list[str],
+    extra_columns: Callable[[str], dict[str, Any]] | None,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Resolve extra column values for each source and collect all column names."""
+    if extra_columns is None:
+        return {source: {} for source in sources}, []
+
+    values_by_source: dict[str, dict[str, Any]] = {}
+    all_extra_cols: set[str] = set()
+
+    for source in sources:
+        values = extra_columns(source)
+        if values is None:
+            values = {}
+        if not isinstance(values, dict):
+            raise ValueError("extra_columns mapper must return a dictionary")
+        values_by_source[source] = values
+        all_extra_cols.update(values.keys())
+
+    return values_by_source, sorted(all_extra_cols)
+
+
+def _apply_extra_columns(
+    df: pd.DataFrame,
+    extra_values: dict[str, Any],
+    extra_column_names: list[str],
+) -> pd.DataFrame:
+    """Append extra columns to a DataFrame with stable column presence/order."""
+    if not extra_column_names:
+        return df
+
+    out = df.copy()
+    collisions = [name for name in extra_column_names if name in out.columns]
+    if collisions:
+        raise ValueError(f"extra_columns contain reserved/existing column names: {collisions}")
+
+    for col in extra_column_names:
+        out[col] = extra_values.get(col)
+
+    return out
 
 
 def export_embeddings_table(
@@ -204,7 +391,8 @@ def export_embeddings_table(
             analysis="embeddings",
             output_path=output_path,
             embeddings_table_format=table_format,
-            filetype=filetype
+            filetype=filetype,
+            template_type="embeddings",
         )
         for source in data_by_source
     }
@@ -259,9 +447,10 @@ def run_recognizers_over_db(
     output_parent: str | Path,
     recognizers,
     recognizer_results_filetype: str,
-    sourcemap,
     output_template,
-    parquet_metadata: dict[str, str] | None = None
+    sourcemap: Callable[[str], str] | None,
+    parquet_metadata: dict[str, str] | None = None,
+    extra_columns: Callable[[str], dict] | None = None
 ):
     """Run embeddings-classifier over DB embeddings, writing results per source.
 
@@ -295,6 +484,8 @@ def run_recognizers_over_db(
         return
 
     source_to_mapped_source = _build_and_validate_sourcemap_sources(data_by_source, sourcemap)
+    source_keys = sorted(data_by_source.keys())
+    extra_cols_by_source, extra_column_names = _resolve_extra_columns_by_source(source_keys, extra_columns)
 
     # cfg is a ClassifierConfigList which uses "classifer_name" to refer to what we call "recognizer_name" for templating purposes. 
     recognizer_names = [cfg.classifier_name for cfg in recognizers.configs]
@@ -307,7 +498,9 @@ def run_recognizers_over_db(
                 analysis="recognizer_results",
                 output_path=output_parent,
                 filetype=recognizer_results_filetype,
-                recognizer_name=recognizer_name)
+                recognizer_name=recognizer_name,
+                template_type="recognizer",
+            )
             for recognizer_name in recognizer_names}
         for source in data_by_source
     }
@@ -356,6 +549,7 @@ def run_recognizers_over_db(
                 )
                 raise RuntimeError(f"Classification failed for {source}: {errors}")
 
+            # one item for each recognizer
             for item in results:
                 result_table = item.result_table
                 if result_table is None:
@@ -368,6 +562,11 @@ def run_recognizers_over_db(
                 recognizer_output_file.parent.mkdir(parents=True, exist_ok=True)
 
                 result_df = result_table.to_pandas()
+                result_df = _apply_extra_columns(
+                    result_df,
+                    extra_cols_by_source[source],
+                    extra_column_names,
+                )
                 if recognizer_results_filetype == "parquet":
                     write_inprogress_parquet(dest_inprogress, result_df, parquet_writers)
                 else:

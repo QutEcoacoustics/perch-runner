@@ -19,6 +19,8 @@ from perch_hoplite.zoo import model_configs
 
 from src.resources import compute_workers, log_ram
 
+from src.embed_and_save_logits_worker import LogitSavingWorker
+
 log = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {'.wav', '.flac', '.mp3', '.ogg'}
@@ -186,16 +188,24 @@ def create_database(config: dict):
 
     audio_sources = source_info.AudioSources((audio_glob,))
 
-    worker = agile_embed.EmbedWorker(
+    # instead of using the original perch_hoplite EmbedWorker, we use our modified LogitSavingWorker that returns both embeddings and logits
+    worker = LogitSavingWorker(
+        model_choice=model_config_key,
+        logit_threshold=config.get('logit_threshold', 0.0),
+        perch_species_list=config.get('perch_species_list'),
+        perch_max_detections_per_window=config.get('perch_max_detections_per_window', 10),
         audio_sources=audio_sources,
         db=db,
         model_config=model_config,
         audio_worker_threads=num_workers,
+        classifier_output_path=config.get("_classify_staging_path"),
+        
     )
 
     t0 = time.monotonic()
     log.info("Starting model inference...")
     worker.process_all(target_dataset_name=dataset_name)
+
     elapsed = time.monotonic() - t0
     log.info("Model inference finished in %.1fs", elapsed)
     log_ram()

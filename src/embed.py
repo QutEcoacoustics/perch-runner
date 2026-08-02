@@ -12,9 +12,9 @@ from pathlib import Path
 
 from src.config import config_to_json
 from src.embed_create_db import AUDIO_EXTENSIONS, _detect_glob_pattern, _discover_audio_files, create_database
-from src.db_to_table import run_recognizers_over_db, export_embeddings_table
+from src.db_to_table import run_recognizers_over_db, export_embeddings_table, export_classify_table
 from src.resources import log_ram
-from src.sourcemap import build_sourcemap
+from src.sourcemap import build_sourcemap, build_extra_columns_map, SourcemapConfig
 from src.version import PERCH_HOPLITE_VERSION, __version__
 
 log = logging.getLogger(__name__)
@@ -85,14 +85,23 @@ def embed(config: dict):
     db_existed_before = db_path.exists()
 
     sourcemap_config = config.get("sourcemap_config")
-    if sourcemap_config is not None and sourcemap_config.sourcemap_pattern is None:
+    if sourcemap_config is not None and sourcemap_config.sourcemap_template is not None and sourcemap_config.file_metadata_pattern is None:
         input_audio_count = _count_input_audio_files_for_run(config)
         if input_audio_count > 1:
+            # user has a template for the sourcemap and there are multiple audio files, so the template values must come from 
+            # a the filename via a regex pattern, however no patten has been set in config. 
             raise ValueError(
                 "sourcemap without a pattern cannot be used when processing multiple audio files, "
                 "because it would map all files to the same source value. "
-                "Provide sourcemap_pattern or process a single input file."
+                "Provide file_metadata_pattern or process a single input file."
             )
+        
+    if config.get("classify", False):
+        # if we are doing classification, create a temp staging path for ALL classification results. 
+        classify_staging_path = Path(config["output"]) / ".classify_staging.parquet"
+        if classify_staging_path.exists():
+            classify_staging_path.unlink()
+        config["_classify_staging_path"] = classify_staging_path
 
     try:
         audio_duration_s = create_database(config)
@@ -103,6 +112,7 @@ def embed(config: dict):
     
     save_db = config.get('save_db', False)
     sourcemap = build_sourcemap(sourcemap_config)
+    extra_columns = build_extra_columns_map(sourcemap_config, ["audio_recording_id"])
 
     if config['embed']:
         export_embeddings_table(
@@ -112,7 +122,7 @@ def embed(config: dict):
             filetype=config["embeddings_table_filetype"],
             output_template=config["embeddings_output_path_template"],
             sourcemap=sourcemap,
-            parquet_metadata=_make_export_metadata(config),
+            parquet_metadata=_make_export_metadata(config)
         )
 
     recognizers = config.get("recognizers", [])
@@ -125,7 +135,22 @@ def embed(config: dict):
             output_template=config['recognizer_output_path_template'],
             sourcemap=sourcemap,
             parquet_metadata=_make_export_metadata(config),
+            extra_columns=extra_columns
         )
+
+    if config.get("classify", False):
+        staging_path = config.get("_classify_staging_path")
+        if staging_path is not None:
+            export_classify_table(
+                staging_path=staging_path,
+                db_path=db_path,
+                output_path=output_root,
+                filetype=config["classify_filetype"],
+                output_template=config["classify_output_path_template"],
+                sourcemap=sourcemap,
+                parquet_metadata=_make_export_metadata(config),
+                extra_columns=extra_columns
+            )
 
     # Clean up database only if: (1) save_db is false AND (2) DB was created by this run (didn't exist before)
     if not save_db and not db_existed_before and db_path.exists():

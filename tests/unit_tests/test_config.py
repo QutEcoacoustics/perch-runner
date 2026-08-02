@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pytest
 import yaml
+import src.config as config_module
 
 from src.config import (
     config_to_json,
     load_config,
+    normalize_perch_species_list,
     normalize_bool_string,
     parse_list_values,
     validate_single_value,
@@ -35,12 +37,66 @@ class TestHelpers:
     def test_parse_list_values(self):
         assert parse_list_values("Parquet, csv") == ["csv", "parquet"]
 
+    def test_normalize_perch_species_list_inline_csv_and_newline(self):
+        cfg = {"perch_species_list": "Koala,Emu\nCurrawong"}
+        normalize_perch_species_list(cfg)
+        assert cfg["perch_species_list"] == ["Koala", "Emu", "Currawong"]
+
+    def test_normalize_perch_species_list_from_list(self):
+        cfg = {"perch_species_list": ["Koala", "Emu", "Koala"]}
+        normalize_perch_species_list(cfg)
+        assert cfg["perch_species_list"] == ["Koala", "Emu"]
+
+    def test_normalize_perch_species_list_from_file(self, tmp_path):
+        species_file = tmp_path / "species.txt"
+        species_file.write_text("Koala\nEmu,Currawong", encoding="utf-8")
+        cfg = {"perch_species_list": str(species_file)}
+        normalize_perch_species_list(cfg)
+        assert cfg["perch_species_list"] == ["Koala", "Emu", "Currawong"]
+
+    def test_normalize_perch_species_list_from_preset_key(self, tmp_path, monkeypatch):
+        species_file = tmp_path / "preset_species.txt"
+        species_file.write_text("Koala\nEmu,Currawong", encoding="utf-8")
+        monkeypatch.setattr(
+            config_module,
+            "SPECIES_LIST_PRESETS",
+            {"australian_birds_01": str(species_file)},
+        )
+
+        cfg = {"perch_species_list": "australian_birds_01"}
+        normalize_perch_species_list(cfg)
+        assert cfg["perch_species_list"] == ["Koala", "Emu", "Currawong"]
+
+    def test_normalize_perch_species_list_prefers_existing_path_over_preset_key(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "cfg"
+        config_dir.mkdir()
+
+        path_named_like_preset = config_dir / "australian_birds_01"
+        path_named_like_preset.write_text("Path Species", encoding="utf-8")
+
+        preset_species_file = tmp_path / "preset_species.txt"
+        preset_species_file.write_text("Preset Species", encoding="utf-8")
+        monkeypatch.setattr(
+            config_module,
+            "SPECIES_LIST_PRESETS",
+            {"australian_birds_01": str(preset_species_file)},
+        )
+
+        cfg = {"perch_species_list": "australian_birds_01"}
+        normalize_perch_species_list(cfg, config_file_dir=config_dir)
+        assert cfg["perch_species_list"] == ["Path Species"]
+
     def test_normalize_bool_string_mutates_dict(self):
         cfg = {"embed": "true", "save_db": "false"}
         normalize_bool_string(cfg, "embed")
         normalize_bool_string(cfg, "save_db")
         assert cfg["embed"] is True
         assert cfg["save_db"] is False
+
+    def test_normalize_bool_string_leaves_empty_string_unchanged(self):
+        cfg = {"embed": ""}
+        normalize_bool_string(cfg, "embed")
+        assert cfg["embed"] == ""
 
     def test_normalize_bool_string_missing_key_noop(self):
         cfg = {"x": 1}
@@ -63,13 +119,16 @@ class TestHelpers:
 
     def test_config_to_json_handles_sourcemap_config(self):
         sourcemap_config = SourcemapConfig.from_inputs(
-            sourcemap="canonical_to_baw_original",
-            sourcemap_values={"domain": "https://api.ecosounds.org"},
+            sourcemap_name="baw_original",
+            file_metadata={"domain": "https://api.ecosounds.org", "audio_recording_id": 1234},
         )
         rendered = config_to_json({"sourcemap_config": sourcemap_config})
         parsed = json.loads(rendered)
-        assert parsed["sourcemap_config"]["sourcemap_template"] == "{domain}/audio_recordings/{arid}/original"
-        assert parsed["sourcemap_config"]["sourcemap_values"] == {"domain": "https://api.ecosounds.org"}
+        assert parsed["sourcemap_config"]["sourcemap_template"] == "{domain}/audio_recordings/{audio_recording_id}/original"
+        assert parsed["sourcemap_config"]["file_metadata"] == {
+            "domain": "https://api.ecosounds.org",
+            "audio_recording_id": "1234",
+        }
 
 
 class TestLoadConfig:
@@ -93,6 +152,125 @@ class TestLoadConfig:
         assert config["embeddings_table_format"] == "serialized"
         assert config["embeddings_table_filetype"] == "parquet"
         assert config["embeddings_output_path_template"] == "{analysis}{ext}"
+        assert config["classify_output_path_template"] == "{analysis}{ext}"
+        assert config["perch_max_detections_per_window"] == 10
+        assert config["perch_species_list"] is None
+
+    def test_perch_species_list_normalized_from_inline_string(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_species_list="Phascolarctos cinereus,Cuculus canorus\nNinox boobook",
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_species_list"] == [
+            "Phascolarctos cinereus",
+            "Cuculus canorus",
+            "Ninox boobook",
+        ]
+
+    def test_perch_species_list_normalized_from_file_path(self, io_dirs, tmp_path):
+        source, output = io_dirs
+        species_file = tmp_path / "species.txt"
+        species_file.write_text("Phascolarctos cinereus\nCuculus canorus,Ninox boobook", encoding="utf-8")
+
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_species_list=str(species_file),
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_species_list"] == [
+            "Phascolarctos cinereus",
+            "Cuculus canorus",
+            "Ninox boobook",
+        ]
+
+    def test_perch_max_detections_per_window_parsed_as_int(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_max_detections_per_window="7",
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_max_detections_per_window"] == 7
+
+    def test_invalid_perch_max_detections_per_window_raises(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_max_detections_per_window="not_an_int",
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="perch_max_detections_per_window must be an integer"):
+            load_config(None, args)
+
+    def test_empty_perch_species_list_raises(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            perch_species_list=[],
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="perch_species_list must contain at least one species"):
+            load_config(None, args)
+
+    def test_classify_does_not_require_species_list_by_default(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_species_list"] is None
+        assert config["classify_require_species_list"] is False
+
+    def test_classify_can_require_species_list_explicitly(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            classify_require_species_list=True,
+            config_file=None,
+        )
+
+        with pytest.raises(ValueError, match="perch_species_list must be provided"):
+            load_config(None, args)
+
+    def test_classify_can_skip_species_list_when_not_required(self, io_dirs):
+        source, output = io_dirs
+        args = argparse.Namespace(
+            source=str(source),
+            output=str(output),
+            classify=True,
+            classify_require_species_list=False,
+            config_file=None,
+        )
+
+        config = load_config(None, args)
+        assert config["perch_species_list"] is None
+        assert config["classify_require_species_list"] is False
 
     def test_cli_args_override_file(self, io_dirs, tmp_path):
         source, output = io_dirs
@@ -210,34 +388,35 @@ class TestLoadConfig:
 
         assert not config["recognizers"]
 
-    def test_sourcemap_values_json_string_from_cli(self, io_dirs):
+    def test_file_metadata_json_string_from_cli(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap="canonical_to_baw_original",
-            sourcemap_values='{"domain": "https://api.ecosounds.org"}',
+            sourcemap_name="baw_original",
+            file_metadata='{"domain": "https://api.ecosounds.org", "audio_recording_id": 1234}',
             config_file=None,
         )
 
         config = load_config(None, args)
-        assert config["sourcemap"] == "canonical_to_baw_original"
-        assert config["sourcemap_values"] == {"domain": "https://api.ecosounds.org"}
+        assert config["sourcemap_name"] == "baw_original"
+        assert config["file_metadata"] == {"domain": "https://api.ecosounds.org", "audio_recording_id": 1234}
         assert isinstance(config["sourcemap_config"], SourcemapConfig)
 
-    def test_sourcemap_values_without_source_raises(self, io_dirs):
+    def test_file_metadata_without_sourcemap_is_allowed(self, io_dirs):
         source, output = io_dirs
         args = argparse.Namespace(
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap_values={"domain": "https://api.ecosounds.org"},
+            file_metadata={"domain": "https://api.ecosounds.org"},
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="sourcemap_values requires sourcemap or sourcemap_template"):
-            load_config(None, args)
+        config = load_config(None, args)
+        assert config["file_metadata"] == {"domain": "https://api.ecosounds.org"}
+        assert isinstance(config["sourcemap_config"], SourcemapConfig)
 
     def test_invalid_sourcemap_raises(self, io_dirs):
         source, output = io_dirs
@@ -245,9 +424,9 @@ class TestLoadConfig:
             source=str(source),
             output=str(output),
             embed=True,
-            sourcemap="not_real",
+            sourcemap_name="not_real",
             config_file=None,
         )
 
-        with pytest.raises(ValueError, match="Invalid sourcemap value"):
+        with pytest.raises(ValueError, match="Invalid sourcemap_name value"):
             load_config(None, args)

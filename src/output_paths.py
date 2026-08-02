@@ -1,30 +1,27 @@
-"""Validate and render templated output paths for embeddings and recognizers.
+"""Validate and render templated output paths for embeddings, recognizers, and classify.
 
 This module holds the default relative output templates, template-token
-validation, template rendering, and path-safety checks used when writing both
-embedding exports and recognizer result files.
+validation, template rendering, and path-safety checks used when writing
+embedding exports, recognizer result files, and classify outputs.
 """
 
-import json
 import re
 import warnings
-import yaml
 from pathlib import Path
-from dataclasses import dataclass
-from typing import ClassVar
 
 
 DEFAULT_PATH_TYPE = "flat"
 
 ALLOWED_OUTPUT_TEMPLATE_TOKENS = {
-    "embeddings": frozenset({"parents", "basename", "ext", "embeddings_table_format", "analysis"}),
-    "recognizer": frozenset({"classifier_name", "parents", "basename", "ext", "analysis"}),
+    "embeddings": frozenset({"parents", "filestem", "ext", "embeddings_table_format", "analysis"}),
+    "recognizer": frozenset({"classifier_name", "parents", "filestem", "ext", "analysis"}),
+    "classify": frozenset({"parents", "filestem", "ext", "analysis"}),
 }
 
 # preset templates for output paths
 OUTPUT_PATH_TYPE_TEMPLATES = {
-    "nested_basename": "{parents}/{basename}{ext}",
-    "flat_basename": "{basename}{ext}",
+    "nested_filestem": "{parents}/{filestem}{ext}",
+    "flat_filestem": "{filestem}{ext}",
     "nested": "{parents}/{analysis}{ext}",
     "flat": "{analysis}{ext}",
 }
@@ -91,7 +88,8 @@ def render_output_relative_path(
         analysis,
         ext,
         embeddings_table_format = None,
-        recognizer_name = None
+    recognizer_name = None,
+    template_type = "embeddings",
 ):
     """Render a relative output path from template tokens.
     Applies extension rules:
@@ -100,10 +98,6 @@ def render_output_relative_path(
     - If rendered has a mismatching hardcoded extension: warn and append.
     """
     
-    # bit of a hack to determine which template type we are rendering for, since the caller doesn't pass that in.
-    # if we pass in recognizer_name it implies we should use the recognizers template type
-    template_type = "recognizer" if recognizer_name is not None else "embeddings"
-
     template = validate_output_path_template(template, template_type=template_type)
 
     audio_rel = Path(audio_file)
@@ -111,7 +105,8 @@ def render_output_relative_path(
     _ensure_relative_safe_path(audio_rel)
 
     parents = "" if audio_rel.parent == Path(".") else audio_rel.parent.as_posix()
-    basename = audio_rel.name
+    # filestem is extensionless so templates like {filestem}{ext} produce myfile.csv
+    filestem = audio_rel.stem
 
     if ext is not None:
         ext = ext if str(ext).startswith(".") else f".{ext}"
@@ -128,7 +123,7 @@ def render_output_relative_path(
     rendered = template
 
     rendered = replace_val("parents", parents)
-    rendered = replace_val("basename", basename)
+    rendered = replace_val("filestem", filestem)
     rendered = replace_val("ext", ext)
     rendered = replace_val("embeddings_table_format", embeddings_table_format)
     rendered = replace_val("analysis", analysis)
@@ -217,5 +212,6 @@ def validate_and_resolve_template_config(config):
     # for each analysis type that uses templated output paths, resolve defaults and validate
     process_for_analysis_type("embeddings_output_path_template", "embeddings_output_path_type", "embeddings")
     process_for_analysis_type("recognizer_output_path_template", "recognizer_output_path_type", "recognizer")
+    process_for_analysis_type("classify_output_path_template", "classify_output_path_type", "classify")
  
 
