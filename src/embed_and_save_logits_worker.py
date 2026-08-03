@@ -218,8 +218,8 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
 
         # magic tranformation to correct logits to be closer to a 0 decision boundary.
         # Tom suggested this
-        #self.logit_transform = lambda x: x * 0.97 - 10
-        self.logit_transform = lambda x: x * 0.97 - 9
+        self.logit_transform = lambda x: x * 0.97 - 10
+
         
 
 
