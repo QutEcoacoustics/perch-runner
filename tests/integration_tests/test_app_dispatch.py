@@ -110,6 +110,21 @@ class TestMainDispatch:
         assert config["embed"] is True
         assert config["embeddings_table_filetype"] == "parquet"
 
+    @patch("src.app.embed")
+    def test_calls_embed_for_classify_only(self, mock_embed, tmp_path):
+        source = tmp_path / "input"
+        source.mkdir()
+        output = tmp_path / "output"
+        output.mkdir()
+
+        with patch("sys.argv", ["app", "analyze", "--source", str(source), "--output", str(output), "--classify"]):
+            main()
+
+        mock_embed.assert_called_once()
+        config = mock_embed.call_args[0][0]
+        assert config["classify"] is True
+        assert config["embed"] is False
+
 
 class TestExitCodes:
     @patch("src.app.embed", side_effect=MemoryError("OOM"))
