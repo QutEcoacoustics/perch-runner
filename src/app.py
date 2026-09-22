@@ -34,14 +34,8 @@ def handle_analyze(args):
 
         log.info("Starting perch-runner version %s", __version__)
 
-        # there are two analyze branches: embedding (and then maybe doing something with the embeddings), or classify, which does not produce embeddings. 
-        if config['embed'] or config['save_db'] or config.get('recognizers'):
-            log.info("Embed requested using model: %s", config['model_choice'])
-            embed(config)
-
-        if config['classify']:
-            # TODO: implement classify branch (no embedding)
-            pass
+        log.info("Analysis requested using model: %s", config['model_choice'])
+        embed(config)
 
     except MemoryError:
         logging.getLogger(__name__).error(
