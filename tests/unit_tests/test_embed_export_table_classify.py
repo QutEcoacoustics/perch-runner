@@ -94,6 +94,7 @@ def test_export_classify_table_routes_rows_by_template_and_source(tmp_path, monk
             "window_id": ["a_0", "b_0"],
             "recording_id": ["1", "2"],
             "offset_s": [0.0, 1.0],
+            "end_offset_s": [5.0, 6.0],
             "species": ["BirdA", "BirdB"],
             "score": [0.9, 0.8],
         }
@@ -119,8 +120,10 @@ def test_export_classify_table_routes_rows_by_template_and_source(tmp_path, monk
     assert second.exists()
 
     first_df = pd.read_csv(first)
-    assert list(first_df.columns) == ["source", "channel", "offset", "label", "score"]
+    assert list(first_df.columns) == ["source", "channel", "start_offset", "end_offset", "label", "score"]
     assert first_df.iloc[0]["source"] == "x/site1.wav"
+    assert first_df.iloc[0]["start_offset"] == 0.0
+    assert first_df.iloc[0]["end_offset"] == 5.0
     assert first_df.iloc[0]["label"] == "BirdA"
 
 
@@ -131,6 +134,7 @@ def test_export_classify_table_applies_sourcemap(tmp_path, monkeypatch):
             "window_id": ["a_0"],
             "recording_id": ["3"],
             "offset_s": [2.5],
+            "end_offset_s": [7.5],
             "species": ["BirdC"],
             "score": [0.7],
         }

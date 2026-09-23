@@ -153,7 +153,7 @@ def export_classify_table(
         staging_path.unlink(missing_ok=True)
         return
 
-    required_cols = {"recording_id", "offset_s", "species", "score"}
+    required_cols = {"recording_id", "offset_s", "end_offset_s", "species", "score"}
     missing_cols = sorted(required_cols - set(df.columns))
     if missing_cols:
         raise ValueError(
@@ -211,10 +211,18 @@ def export_classify_table(
             if source_rows.empty:
                 continue
 
-            source_rows = source_rows.rename(columns={"offset_s": "offset", "species": "label"})
+            source_rows = source_rows.rename(
+                columns={
+                    "offset_s": "start_offset",
+                    "end_offset_s": "end_offset",
+                    "species": "label",
+                }
+            )
             source_rows["source"] = recording_id_to_mapped_source[recording_id]
             source_rows["channel"] = 0
-            source_rows = source_rows[["source", "channel", "offset", "label", "score"]]
+            source_rows = source_rows[
+                ["source", "channel", "start_offset", "end_offset", "label", "score"]
+            ]
             source_rows = _apply_extra_columns(
                 source_rows,
                 extra_cols_by_source[source],

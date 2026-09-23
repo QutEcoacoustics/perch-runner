@@ -318,6 +318,7 @@ class LogitSavingWorker(agile_embed.EmbedWorker):
                                         "window_id": window_id,
                                         "recording_id": str(recording_ids[i]),
                                         "offset_s": offsets[i][0],
+                                        "end_offset_s": offsets[i][1],
                                         "species": species_name,
                                         "score": score,
                                     })

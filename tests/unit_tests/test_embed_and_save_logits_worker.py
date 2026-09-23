@@ -4,6 +4,7 @@ from perch_hoplite.agile import embed as agile_embed
 from src.embed_and_save_logits_worker import (
     LogitSavingWorker,
     _validate_class_name_mapping,
+    process_source_id_with_logits,
     resolve_species_class_names,
     _select_top_indices_above_threshold,
 )
@@ -190,6 +191,52 @@ def test_logit_worker_applies_custom_max_detections_and_species_filter(monkeypat
 
     assert worker.max_classes_per_segment == 4
     assert worker.perch_species_filter == {"koala", "currawong"}
+
+
+def test_process_source_id_with_logits_returns_start_and_end_offsets():
+    class _Outputs:
+        def __init__(self):
+            self.embeddings = np.array([[[0.1, 0.2]], [[0.3, 0.4]]], dtype=np.float32)
+            self.logits = {"label": np.array([[0.9, 0.1], [0.8, 0.2]], dtype=np.float32)}
+
+    class _EmbeddingModel:
+        sample_rate = 32000
+
+        def embed(self, _audio_array):
+            return _Outputs()
+
+    class _Glob:
+        min_audio_len_s = 0
+
+    class _Worker:
+        def __init__(self):
+            self.audio_globs = {"dataset": _Glob()}
+            self.embedding_model = _EmbeddingModel()
+            self.classifier_output_path = "staging.parquet"
+            self.logits_key = "label"
+
+        def get_sample_rate_hz(self, _source_id):
+            return 32000
+
+        def load_audio(self, _source_id):
+            return np.ones((32000,), dtype=np.float32)
+
+        def compute_hop_size_s(self, _source_id, _target_sample_rate):
+            return 1.5
+
+    class _SourceId:
+        dataset_name = "dataset"
+        offset_s = 2.0
+
+    result = process_source_id_with_logits(
+        {"worker": _Worker()},
+        _SourceId(),
+        window_size_s=5.0,
+    )
+
+    assert result is not None
+    _, offsets, _, _ = result
+    assert offsets == [[2.0, 7.0], [3.5, 8.5]]
 
 
 def test_validate_class_name_mapping_accepts_matching_lengths():
