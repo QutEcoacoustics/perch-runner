@@ -149,6 +149,49 @@ class TestEmbedPipeline:
         assert kwargs["filetype"] == "csv"
         assert kwargs["output_template"] == "{analysis}{ext}"
 
+    def test_classify_only_temp_outputs_cleaned_when_save_db_false(self, tmp_path):
+        config = _base_config(tmp_path, embed=False, classify=True)
+        db_path = Path(config["db_path"])
+        staging_path = Path(config["output"]) / ".classify_staging.parquet"
+
+        def _create_db(cfg):
+            Path(cfg["db_path"]).mkdir(parents=True, exist_ok=True)
+            (Path(cfg["db_path"]) / "hoplite.sqlite").write_text("sqlite")
+            (Path(cfg["db_path"]) / "usearch.index").write_text("index")
+            staging_path.write_text("staged rows")
+            cfg["_classify_staging_path"] = staging_path
+            return 100.0
+
+        with mock.patch("src.embed.create_database", side_effect=_create_db), mock.patch(
+            "src.embed.export_classify_table"
+        ), mock.patch("src.embed.log_ram"):
+            embed.embed(config)
+
+        assert not db_path.exists()
+        assert not staging_path.exists()
+
+    def test_temp_outputs_cleaned_when_classify_export_fails(self, tmp_path):
+        config = _base_config(tmp_path, classify=True)
+        db_path = Path(config["db_path"])
+        staging_path = Path(config["output"]) / ".classify_staging.parquet"
+
+        def _create_db(cfg):
+            Path(cfg["db_path"]).mkdir(parents=True, exist_ok=True)
+            (Path(cfg["db_path"]) / "hoplite.sqlite").write_text("sqlite")
+            staging_path.write_text("staged rows")
+            cfg["_classify_staging_path"] = staging_path
+            return 100.0
+
+        with mock.patch("src.embed.create_database", side_effect=_create_db), mock.patch(
+            "src.embed.export_embeddings_table"
+        ), mock.patch(
+            "src.embed.export_classify_table", side_effect=RuntimeError("boom")
+        ), mock.patch("src.embed.log_ram"), pytest.raises(RuntimeError, match="boom"):
+            embed.embed(config)
+
+        assert not db_path.exists()
+        assert not staging_path.exists()
+
     def test_no_pattern_sourcemap_with_multiple_files_raises(self, tmp_path):
         config = _base_config(
             tmp_path,
