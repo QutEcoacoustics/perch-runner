@@ -1,7 +1,8 @@
 FROM python:3.12-slim AS base
 
 # tells uv to install packages globally instead of in a venv, since we're in a container
-ENV UV_SYSTEM_PYTHON=1
+ENV UV_SYSTEM_PYTHON=1 \
+    KAGGLEHUB_CACHE=/opt/perch-runner/.cache/kagglehub
 
 RUN apt update && apt install -y git libsndfile1 ffmpeg
 
@@ -24,7 +25,7 @@ RUN python -m src.download_models
 # --- Final Stage ---
 FROM base AS final
 WORKDIR /app
-COPY --from=models /root/.cache/kagglehub /root/.cache/kagglehub
+COPY --from=models /opt/perch-runner/.cache/kagglehub /opt/perch-runner/.cache/kagglehub
 COPY . .
 COPY --from=models /app/src/models.json src/models.json
 ARG VERSION=dev

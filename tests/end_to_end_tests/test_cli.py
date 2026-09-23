@@ -66,6 +66,18 @@ class TestEmbedCLI:
         assert len(df) >= 6
         assert df["source"].iloc[0] == f"Minjerribah-Dry-B/{A2O_FLAC}"
 
+    def test_embed_with_overridden_home_uses_preloaded_model_cache(self, runner, workspace):
+        """Runtime HOME changes should not force a fresh model download."""
+        source, output, _, test_files = workspace
+        site = source / "site"
+        site.mkdir()
+        shutil.copy(test_files / "audio" / "100sec.wav", site)
+
+        runner(source, output, "--embed", env={"HOME": "/home/a2o"})
+
+        parquet = output / "embeddings.parquet"
+        assert parquet.exists()
+
     def test_embed_columns_format(self, runner, workspace):
         """--embed with --embeddings_table_format columns produces column-per-dimension."""
         source, output, _, test_files = workspace
