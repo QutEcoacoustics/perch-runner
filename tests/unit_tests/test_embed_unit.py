@@ -170,6 +170,28 @@ class TestEmbedPipeline:
         assert not db_path.exists()
         assert not staging_path.exists()
 
+    def test_classify_only_preserves_existing_db_when_save_db_false(self, tmp_path):
+        config = _base_config(tmp_path, embed=False, classify=True)
+        db_path = Path(config["db_path"])
+        db_path.mkdir(parents=True, exist_ok=True)
+        marker = db_path / "marker.txt"
+        marker.write_text("keep")
+        staging_path = Path(config["output"]) / ".classify_staging.parquet"
+
+        def _create_db(cfg):
+            staging_path.write_text("staged rows")
+            cfg["_classify_staging_path"] = staging_path
+            return 100.0
+
+        with mock.patch("src.embed.create_database", side_effect=_create_db), mock.patch(
+            "src.embed.export_classify_table"
+        ), mock.patch("src.embed.log_ram"):
+            embed.embed(config)
+
+        assert db_path.exists()
+        assert marker.exists()
+        assert not staging_path.exists()
+
     def test_temp_outputs_cleaned_when_classify_export_fails(self, tmp_path):
         config = _base_config(tmp_path, classify=True)
         db_path = Path(config["db_path"])
