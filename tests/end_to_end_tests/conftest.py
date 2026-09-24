@@ -74,7 +74,7 @@ def runner():
 
 def _subprocess_runner():
     """Runner that invokes src/app.py as a local subprocess."""
-    def _run(source, output, *extra_args, config_file=None):
+    def _run(source, output, *extra_args, config_file=None, env=None):
         cmd = [
             sys.executable, "src/app.py", "analyze",
             "--source", str(source),
@@ -84,14 +84,16 @@ def _subprocess_runner():
             cmd += ["--config_file", str(config_file)]
         cmd += list(extra_args)
 
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(Path.cwd())
+        run_env = dict(os.environ)
+        run_env["PYTHONPATH"] = str(Path.cwd())
+        if env:
+            run_env.update(env)
 
         return _run_command(
             cmd,
             description="Subprocess command",
             cwd=str(Path.cwd()),
-            env=env,
+            env=run_env,
         )
     return _run
 
@@ -102,11 +104,12 @@ def _docker_runner():
     """
     image = os.environ.get("IMAGE", "qutecoacoustics/perchrunner:latest")
 
-    def _run(source, output, *extra_args, config_file=None):
+    def _run(source, output, *extra_args, config_file=None, env=None):
         mounts = [
             "-v", f"{Path(source).absolute()}:/mnt/input",
             "-v", f"{Path(output).absolute()}:/mnt/output",
         ]
+        env_args = []
         cmd_args = ["--source", "/mnt/input", "--output", "/mnt/output"]
 
         if config_file:
@@ -115,9 +118,13 @@ def _docker_runner():
             mounts += ["-v", f"{config_dir}:/mnt/config"]
             cmd_args += ["--config_file", f"/mnt/config/{config_path.name}"]
 
+        if env:
+            for key, value in env.items():
+                env_args += ["-e", f"{key}={value}"]
+
         cmd_args += list(extra_args)
 
-        command = ["docker", "run", "--rm", "--network=none"] + mounts + [image, "analyze"] + cmd_args
+        command = ["docker", "run", "--rm", "--network=none"] + env_args + mounts + [image, "analyze"] + cmd_args
         return _run_command(
             command,
             description="Docker command",
