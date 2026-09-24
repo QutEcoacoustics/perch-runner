@@ -1,6 +1,7 @@
 FROM python:3.12-slim AS base
 
 # tells uv to install packages globally instead of in a venv, since we're in a container
+# keep kagglehub on a fixed shared path so preloaded models are found even if HOME changes at runtime
 ENV UV_SYSTEM_PYTHON=1 \
     KAGGLEHUB_CACHE=/opt/perch-runner/.cache/kagglehub
 
