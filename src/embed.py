@@ -5,6 +5,7 @@ optional recognizer execution, and cleanup of temporary database outputs. It is
 the main implementation behind the app-level `embed(config)` entrypoint.
 """
 
+import gc
 import logging
 import time
 import shutil
@@ -67,6 +68,32 @@ def _make_export_metadata(config: dict) -> dict[str, str]:
     }
 
 
+def _cleanup_temporary_outputs(
+    *,
+    save_db: bool,
+    db_existed_before: bool,
+    db_path: Path,
+    classify_staging_path: Path | None,
+) -> None:
+    """Remove temporary outputs created for the current run when save_db is false."""
+    if save_db:
+        return
+
+    if classify_staging_path is not None and classify_staging_path.exists():
+        classify_staging_path.unlink(missing_ok=True)
+
+    if db_existed_before:
+        log.info("Preserving pre-existing database at %s (it existed before this run)", db_path)
+        return
+
+    if not db_path.exists():
+        return
+
+    gc.collect()
+    log.info("Cleaning up database at %s (save_db is false, DB was created by this run)", db_path)
+    shutil.rmtree(db_path, ignore_errors=True)
+
+
 def embed(config: dict):
     t_start = time.monotonic()
 
@@ -114,50 +141,51 @@ def embed(config: dict):
     sourcemap = build_sourcemap(sourcemap_config)
     extra_columns = build_extra_columns_map(sourcemap_config, ["audio_recording_id"])
 
-    if config['embed']:
-        export_embeddings_table(
-            db_path=db_path,
-            output_path=output_root,
-            table_format=config['embeddings_table_format'],
-            filetype=config["embeddings_table_filetype"],
-            output_template=config["embeddings_output_path_template"],
-            sourcemap=sourcemap,
-            parquet_metadata=_make_export_metadata(config)
-        )
-
-    recognizers = config.get("recognizers", [])
-    if recognizers:
-        run_recognizers_over_db(
-            db_path=db_path,
-            output_parent=output_root,
-            recognizers=recognizers,
-            recognizer_results_filetype=config["recognizer_results_filetype"],
-            output_template=config['recognizer_output_path_template'],
-            sourcemap=sourcemap,
-            parquet_metadata=_make_export_metadata(config),
-            extra_columns=extra_columns
-        )
-
-    if config.get("classify", False):
-        staging_path = config.get("_classify_staging_path")
-        if staging_path is not None:
-            export_classify_table(
-                staging_path=staging_path,
+    try:
+        if config['embed']:
+            export_embeddings_table(
                 db_path=db_path,
                 output_path=output_root,
-                filetype=config["classify_filetype"],
-                output_template=config["classify_output_path_template"],
+                table_format=config['embeddings_table_format'],
+                filetype=config["embeddings_table_filetype"],
+                output_template=config["embeddings_output_path_template"],
+                sourcemap=sourcemap,
+                parquet_metadata=_make_export_metadata(config)
+            )
+
+        recognizers = config.get("recognizers", [])
+        if recognizers:
+            run_recognizers_over_db(
+                db_path=db_path,
+                output_parent=output_root,
+                recognizers=recognizers,
+                recognizer_results_filetype=config["recognizer_results_filetype"],
+                output_template=config['recognizer_output_path_template'],
                 sourcemap=sourcemap,
                 parquet_metadata=_make_export_metadata(config),
                 extra_columns=extra_columns
             )
 
-    # Clean up database only if: (1) save_db is false AND (2) DB was created by this run (didn't exist before)
-    if not save_db and not db_existed_before and db_path.exists():
-        log.info("Cleaning up database at %s (save_db is false, DB was created by this run)", db_path)
-        shutil.rmtree(db_path, ignore_errors=True)
-    elif not save_db and db_existed_before:
-        log.info("Preserving pre-existing database at %s (it existed before this run)", db_path)
+        if config.get("classify", False):
+            staging_path = config.get("_classify_staging_path")
+            if staging_path is not None:
+                export_classify_table(
+                    staging_path=staging_path,
+                    db_path=db_path,
+                    output_path=output_root,
+                    filetype=config["classify_filetype"],
+                    output_template=config["classify_output_path_template"],
+                    sourcemap=sourcemap,
+                    parquet_metadata=_make_export_metadata(config),
+                    extra_columns=extra_columns
+                )
+    finally:
+        _cleanup_temporary_outputs(
+            save_db=save_db,
+            db_existed_before=db_existed_before,
+            db_path=db_path,
+            classify_staging_path=config.get("_classify_staging_path"),
+        )
 
     elapsed = time.monotonic() - t_start
     log_ram()
@@ -168,4 +196,3 @@ def embed(config: dict):
                  elapsed, elapsed / 60, time_per_hour)
     else:
         log.info("Done. Total time: %.1fs (%.1f min)", elapsed, elapsed / 60)
-
