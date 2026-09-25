@@ -397,6 +397,7 @@ Notes:
 - `--save_db` means that the perch-hoplite database won't be removed at the end
 - we don't specify `--embedding_model`, so it will default to perch_v2
 - `--classify` is specified, so we expect a csv of perch_v2 classification results
+- classify CSV/parquet outputs contain `source`, `channel`, `start_offset`, `end_offset`, `label`, and `score`
 
 ### Single file, embeddings parquet flat to embeddings.parquet, BAW sourcemap
 
@@ -534,4 +535,3 @@ It must be run from the root of the repo for test discovery and accessing the te
 ## License
 
 Apache 2.0
-

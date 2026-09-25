@@ -77,8 +77,14 @@ def test_embed_pipeline_creates_classify_output_csv_with_templated_path(workspac
     assert classify_csv.exists(), f"Expected classify output CSV at {classify_csv}"
 
     table = pcsv.read_csv(classify_csv)
-    for col in ("source", "channel", "offset", "label", "score"):
+    for col in ("source", "channel", "start_offset", "end_offset", "label", "score"):
         assert col in table.column_names, f"Expected column '{col}' missing from {classify_csv.name}"
+
+    start_offsets = table.column("start_offset").to_pylist()
+    end_offsets = table.column("end_offset").to_pylist()
+    assert all(end > start for start, end in zip(start_offsets, end_offsets)), (
+        "Expected classify end_offset values to be greater than start_offset values"
+    )
 
     labels = [str(v) for v in table.column("label").to_pylist()]
     assert labels, "Expected at least one classify row"
